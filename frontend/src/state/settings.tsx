@@ -2,7 +2,10 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { InterventionMode } from "../data/types";
 import { DEFAULT_RULES, type LapseRules } from "../data/mock/runEngine";
 
-export const DEFAULT_MONTAGE = ["P3", "Fz", "Cz", "Fp1", "P4", "P7", "O1", "O2"]; // board channels 1-8 as wired
+export const DEFAULT_MONTAGE = ["P3", "Fz", "Cz", "Fp1", "P4", "Pz", "O1", "O2"]; // board channels 1-8 as wired
+// Earlier builds saved channel 6 as P7 by mistake; upgrade that exact saved montage.
+const OLD_DEFAULT = ["P3", "Fz", "Cz", "Fp1", "P4", "P7", "O1", "O2"];
+const isOldDefault = (m?: string[]) => Array.isArray(m) && m.join() === OLD_DEFAULT.join();
 export const TEN_TEN = ["Fp1", "Fp2", "Fz", "F3", "F4", "F7", "F8", "Cz", "C3", "C4", "T7", "T8",
   "Pz", "P3", "P4", "P7", "P8", "POz", "Oz", "O1", "O2"];
 
@@ -27,7 +30,10 @@ const KEY = "wdim.settings";
 function load(): Settings {
   try {
     const v = localStorage.getItem(KEY);
-    return v ? { ...DEFAULTS, ...(JSON.parse(v) as Partial<Settings>), rules: { ...DEFAULT_RULES, ...(JSON.parse(v).rules ?? {}) } } : DEFAULTS;
+    if (!v) return DEFAULTS;
+    const saved = JSON.parse(v) as Partial<Settings>;
+    if (isOldDefault(saved.montage)) saved.montage = DEFAULT_MONTAGE;
+    return { ...DEFAULTS, ...saved, rules: { ...DEFAULT_RULES, ...(saved.rules ?? {}) } };
   } catch { return DEFAULTS; }
 }
 

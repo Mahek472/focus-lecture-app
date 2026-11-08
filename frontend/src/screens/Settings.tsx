@@ -65,7 +65,7 @@ export function SettingsScreen() {
           </div>
           <div>
             <h3 style={{ marginBottom: 8 }}>Channel montage</h3>
-            <p className="small muted" style={{ marginBottom: 8 }}>Which 10-10 position each board channel is wired to. Default: P3, Fz, Cz, Fp1, P4, P7, O1, O2.</p>
+            <p className="small muted" style={{ marginBottom: 8 }}>Which 10-10 position each board channel is wired to. Default: P3, Fz, Cz, Fp1, P4, Pz, O1, O2.</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
               {s.montage.map((c, i) => (
                 <label key={i} className="field"><span>Board channel {i + 1}</span>

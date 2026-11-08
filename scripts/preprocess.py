@@ -27,7 +27,7 @@ import numpy as np
 
 OUR_8 = ["Fp1", "Fz", "Cz", "Pz", "P3", "P4", "O1", "O2"]  # Team 20 layout
 TANG_8 = ["F3", "F4", "T7", "C3", "C4", "T8", "O1", "O2"]  # Tang 2023 (T3/T4 = T7/T8 in 10-10)
-HEADSET_8 = ["P3", "Fz", "Cz", "Fp1", "P4", "P7", "O1", "O2"]  # our Knight board, channels 1-8 as wired
+HEADSET_8 = ["P3", "Fz", "Cz", "Fp1", "P4", "Pz", "O1", "O2"]  # our Knight board, channels 1-8 as wired
 MONTAGES = {"our8": OUR_8, "tang8": TANG_8, "headset8": HEADSET_8}
 BANDS = [(1, 4), (4, 8), (8, 13), (13, 30)]  # Tang 2023: delta, theta, alpha, beta
 WIN_S = 2.0

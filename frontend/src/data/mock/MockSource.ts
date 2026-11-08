@@ -263,7 +263,7 @@ export class MockSource implements DataSource {
     const sim = new EegSimulator(this.channels, fs, 3);
     sim.autoArtifacts = false;
     sim.hum = this.hum;
-    sim.setFault(Math.max(0, this.channels.indexOf("P7")), "noisy");   // one electrode needs adjusting
+    sim.setFault(Math.max(0, this.channels.indexOf("Pz")), "noisy");   // one electrode needs adjusting
     this.checkSim = sim;
     const filt = this.channels.map(() => new DisplayFilter(fs, 60));
     const len = fs * 10;

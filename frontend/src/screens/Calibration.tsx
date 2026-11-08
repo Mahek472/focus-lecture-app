@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { CalibrationVideo, type CalibrationVideoHandle } from "../components/CalibrationVideo";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { CalibrationProgress } from "../data/types";
 import { useConnection, useServerMessage, useSource } from "../state/source";
@@ -26,12 +27,14 @@ export function Calibration() {
   const [p, setP] = useState<CalibrationProgress | null>(null);
   const [started, setStarted] = useState(false);
   const [error, setError] = useState("");
+  const clip = useRef<CalibrationVideoHandle>(null);
 
   useEffect(() => { source.connect(runId); return () => source.disconnect(); }, [source, runId]);
   useServerMessage("calibration", setP);
 
   const start = async () => {
     setError(""); setStarted(true); setP(null);
+    clip.current?.play();
     try { await source.startCalibration(runId); } catch (e) { setError(e instanceof Error ? e.message : "Calibration could not start"); setStarted(false); }
   };
 
@@ -73,13 +76,23 @@ export function Calibration() {
         </ol>
 
         <div style={{ display: "grid", gap: 16 }}>
+          <section className="panel" aria-labelledby="cal-clip">
+            <div className="panel__head"><h2 id="cal-clip">Calibration clip</h2><span className="spacer" />
+              <span className="small muted">Any lecture except the session's own</span></div>
+            <div style={{ padding: 12 }}>
+              <CalibrationVideo ref={clip} overlay={cur && !done && p
+                ? (cur.task === "watch" ? "Watch normally" : <>Count back by 7 from <span className="num">{p.start_number ?? "…"}</span></>)
+                : undefined} />
+            </div>
+          </section>
+
           <section className="panel panel--primary" aria-live="polite">
             <div className="panel__body" style={{ padding: 24, minHeight: 220, display: "grid", gap: 14 }}>
               {!started && !done && (
                 <>
                   <h2>Before you start</h2>
                   <ul style={{ margin: 0, paddingLeft: 18 }} className="muted">
-                    <li>Play any lecture clip on the participant's screen (not the session's lecture) and keep it playing.</li>
+                    <li>Load a lecture clip above (a video file from this computer or a YouTube link, not the session's lecture). It starts playing when you press Start and loops.</li>
                     <li>The participant sits still and keeps their eyes on the video in every block.</li>
                     <li>Read each instruction aloud when the block changes.</li>
                   </ul>

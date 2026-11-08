@@ -80,8 +80,8 @@ export class EegSimulator {
       if (this.autoArtifacts) {
         if (this.rnd() < 0.25 / fs) this.blink();                 // ~one blink every 4 s
         if (this.rnd() < 0.012 / fs) this.move();                 // a movement every ~80 s
-        if (this.rnd() < 0.006 / fs) {                            // a flaky-contact episode every ~3 min on P7
-          const ch = Math.max(0, this.channels.indexOf("P7"));
+        if (this.rnd() < 0.006 / fs) {                            // a flaky-contact episode every ~3 min on Pz
+          const ch = Math.max(0, this.channels.indexOf("Pz"));
           this.setFault(ch, this.rnd() < 0.7 ? "noisy" : "flat", 6 + this.rnd() * 10);
         }
       }
