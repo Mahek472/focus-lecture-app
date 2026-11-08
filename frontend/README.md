@@ -66,4 +66,6 @@ The contract doc fixes the `focus` message exactly. These details are not in it;
    - `confidence` on `focus`; without it the UI derives the uncertainty band and says so on screen.
    - raw `eeg` chunks; without them the live trace panels stay empty during a lecture.
    - `camera` on `status`.
-7. **Voltage scale:** BrainFlow 5.23.0 reports Knight EEG 79.57 times too large. `scripts/live_signal.py` already corrects it; any new backend code must too (see `knight_scale()` in `scripts/headset_session.py`).
+7. **Camera message (UI → backend, once a second while the webcam runs):**
+   `{type: "camera", t_video, state, face, head_turned, head_down, eyes_off, blink_rate}`, where `state` is one of `watching`, `face_missing`, `head_turned`, `head_down`, `eyes_off`. The backend applies the 3 s camera override when `state` isn't `watching`. `blink_rate` is information only and never triggers a lapse. All camera analysis happens in the browser (MediaPipe Face Landmarker); no video is sent.
+8. **Voltage scale:** BrainFlow 5.23.0 reports Knight EEG 79.57 times too large. `scripts/live_signal.py` already corrects it; any new backend code must too (see `knight_scale()` in `scripts/headset_session.py`).

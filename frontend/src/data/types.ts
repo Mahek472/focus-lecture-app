@@ -173,7 +173,19 @@ export interface SettingsMessage {
   sensitivity: number;
 }
 
-export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage;
+/** Webcam attention state, computed in the browser (MediaPipe), sent once a second. Not in contract. */
+export interface CameraMessage {
+  type: "camera";
+  t_video: number;
+  state: "watching" | "face_missing" | "head_turned" | "head_down" | "eyes_off";
+  face: boolean;
+  head_turned: boolean;
+  head_down: boolean;
+  eyes_off: boolean;
+  blink_rate: number | null;   // per minute; information only, never a lapse trigger
+}
+
+export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage | CameraMessage;
 
 // ---------------------------------------------------------------- local (operator) data
 

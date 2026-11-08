@@ -14,6 +14,9 @@ import { ConnectionStatus, FocusStatus, Icon } from "../components/Status";
 import { toPoints, UNCERTAINTY_SOURCE } from "../lib/uncertainty";
 import { forceSimVideo } from "../lib/flags";
 import { fmtTime } from "../lib/format";
+import { CameraPanel } from "../components/CameraPanel";
+import { camera } from "../camera/CameraMonitor";
+import { useCameraReading } from "../camera/useCamera";
 
 const MARKER_PRESETS = ["Slide change", "Question asked", "Looked at phone", "Noise in room"];
 const GAINS = [10, 20, 50, 100, 200];
@@ -92,6 +95,20 @@ export function Watch() {
       lastSent.current = { t: now, playing, at: ms };
     }
   }, [source, recorder]);
+
+  // webcam attention state -> backend once a second (it applies the 3 s camera override)
+  const cam = useCameraReading(2);
+  const tRef = useRef(0); tRef.current = t;
+  useEffect(() => {
+    if (!cam.running) return;
+    const id = window.setInterval(() => {
+      const r = camera.last;
+      if (!r.running) return;
+      source.send({ type: "camera", t_video: +tRef.current.toFixed(2), state: r.state, face: r.face, head_turned: r.headTurned,
+        head_down: r.headDown, eyes_off: r.eyesOff, blink_rate: r.blinkRate == null ? null : Math.round(r.blinkRate) });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [cam.running, source]);
 
   const respond = useCallback((choice: InterventionResponse["choice"]) => {
     setIntervention((ev) => {
@@ -211,12 +228,18 @@ export function Watch() {
                 <strong style={{ fontWeight: 500 }}>Signal</strong>{" "}
                 <span className="num muted">{Object.values(quality).filter((q) => q !== "bad").length} of {settings.montage.length} usable</span>
               </div>
-              <div className="small">
-                <span className={`status status--${status?.camera?.override ? "warn" : status?.camera ? "good" : "neutral"}`}>
-                  <Icon name="camera" />{status?.camera ? (status.camera.override ? `Camera override: ${status.camera.reason ?? "away"}` : status.camera.face_in_view ? "Camera: face in view" : `Camera: ${status.camera.reason ?? "face not found"}`) : "Camera: no status yet"}
-                </span>
-              </div>
+              {status?.camera?.override && (
+                <div className="small">
+                  <span className="status status--warn"><Icon name="camera" />Camera override: {status.camera.reason ?? "away"}</span>
+                </div>
+              )}
             </div>
+          </section>
+
+          <section className="watch__panel" aria-label="Camera">
+            <div className="small" style={{ marginBottom: 6 }}><strong style={{ fontWeight: 500 }}>Camera</strong>
+              <span className="muted"> {cam.running ? "sent to the backend each second" : "off: only EEG is used"}</span></div>
+            <CameraPanel compact />
           </section>
         </aside>
       </div>

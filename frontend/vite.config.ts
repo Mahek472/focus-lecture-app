@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 // The dev server proxies the existing Python services, so neither needs CORS changes:
@@ -47,6 +47,32 @@ function deviceAgent(): Plugin {
           try { return JSON.parse(raw || "{}"); } catch { return {}; }
         };
         if (req.url === "/agent/ports") return send(200, await listPorts());
+        if (req.url === "/agent/clips") {   // recorded webcam clips: recordings/<run>_cam/<clip>.webm
+          const dir = path.join(ROOT, "recordings");
+          const out: { run: string; clip: string; url: string; mb: number }[] = [];
+          if (existsSync(dir)) for (const d of readdirSync(dir)) {
+            if (!d.endsWith("_cam") || !statSync(path.join(dir, d)).isDirectory()) continue;
+            for (const f of readdirSync(path.join(dir, d))) if (f.endsWith(".webm"))
+              out.push({ run: d.replace(/_cam$/, ""), clip: f.replace(/\.webm$/, ""), url: `/agent/clip/${d}/${f}`,
+                         mb: Math.round(statSync(path.join(dir, d, f)).size / 1e5) / 10 });
+          }
+          return send(200, out);
+        }
+        if (req.url.startsWith("/agent/clip/")) {   // serve one clip, with Range support so the video can seek
+          const rel = decodeURIComponent(req.url.slice("/agent/clip/".length)).split("?")[0];
+          if (!/^[\w-]+_cam\/[\w-]+\.webm$/.test(rel)) return send(400, { error: "bad clip path" });
+          const file = path.join(ROOT, "recordings", rel);
+          if (!existsSync(file)) return send(404, { error: "no such clip" });
+          const size = statSync(file).size, range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
+          res.setHeader("Content-Type", "video/webm"); res.setHeader("Accept-Ranges", "bytes");
+          if (range) {
+            const start = range[1] ? +range[1] : 0, end = range[2] ? +range[2] : size - 1;
+            res.statusCode = 206; res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`); res.setHeader("Content-Length", end - start + 1);
+            return void createReadStream(file, { start, end }).pipe(res);
+          }
+          res.setHeader("Content-Length", size);
+          return void createReadStream(file).pipe(res);
+        }
         if (req.url === "/agent/status") return send(200, state);
         if (req.url === "/agent/stop" && req.method === "POST") { stop(); return send(200, { ok: true }); }
         if (req.url === "/agent/start" && req.method === "POST") {

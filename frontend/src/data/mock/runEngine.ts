@@ -120,7 +120,15 @@ export class RunEngine {
     return out;
   }
 
+  /** Real webcam state from the UI (CameraMessage); replaces the simulated phone pick-ups while fresh. */
+  externalCamera: { away: boolean; reason: string; at: number } | null = null;
+  private cameraFresh() { return !!this.externalCamera && Date.now() - this.externalCamera.at < 3000; }
+
   camera() {
+    if (this.cameraFresh()) {
+      const c = this.externalCamera!;
+      return { face_in_view: !c.away, override: this.phoneSecs >= this.rules.camera_override_s, reason: c.away ? c.reason : undefined };
+    }
     return { face_in_view: this.phoneLeft <= 0, override: this.phoneSecs >= this.rules.camera_override_s,
              reason: this.phoneLeft > 0 ? "phone in view" : undefined };
   }
@@ -128,11 +136,17 @@ export class RunEngine {
   /** One second of backend logic at video time t (call while the video plays). */
   tick(t: number): Out[] {
     const out: Out[] = [];
-    // live-mode attention process: occasional drift episodes and phone pick-ups
-    if (this.mode === "live") {
-      if (this.driftLeft > 0) this.driftLeft--; else if (this.rnd() < 1 / 45) this.driftLeft = 12 + Math.floor(this.rnd() * 25);
+    if (this.cameraFresh()) {
+      // contract camera override: counts seconds the webcam sees the person away
+      this.phoneLeft = 0;
+      this.phoneSecs = this.externalCamera!.away ? this.phoneSecs + 1 : 0;
+    } else if (this.mode === "live") {
+      // simulated live attention process: occasional phone pick-ups
       if (this.phoneLeft > 0) this.phoneLeft--; else if (this.rnd() < 1 / 150) this.phoneLeft = 6 + Math.floor(this.rnd() * 8);
       this.phoneSecs = this.phoneLeft > 0 ? this.phoneSecs + 1 : 0;
+    }
+    if (this.mode === "live") {
+      if (this.driftLeft > 0) this.driftLeft--; else if (this.rnd() < 1 / 45) this.driftLeft = 12 + Math.floor(this.rnd() * 25);
     }
     const truth = this.truthAt(t);
     this.truthHist.push(truth);

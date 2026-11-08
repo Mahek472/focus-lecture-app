@@ -239,6 +239,10 @@ export class MockSource implements DataSource {
     const run = this.active;
     if (msg.type === "video_state") this.video = { t: msg.t_video, playing: msg.playing };
     if (msg.type === "settings" && run) { run.engine.intervention = msg.intervention; run.engine.sensitivity = msg.sensitivity; }
+    if (msg.type === "camera" && run) {
+      const reason = { watching: "", face_missing: "face not in view", head_turned: "head turned away", head_down: "head down", eyes_off: "eyes off screen" }[msg.state];
+      run.engine.externalCamera = { away: msg.state !== "watching", reason, at: Date.now() };
+    }
     // intervention_response and feedback are acknowledged silently, as the backend would log them
     void this.activeId;
   }

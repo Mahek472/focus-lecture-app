@@ -6,6 +6,7 @@ import { useSettings } from "../state/settings";
 import { HeadMap } from "../components/HeadMap";
 import { TraceViewer } from "../components/TraceViewer";
 import { Icon } from "../components/Status";
+import { CameraPanel } from "../components/CameraPanel";
 
 // Thresholds match scripts/live_signal.py: noise SD over 2 s, good < 30 uV, ok 30-60, poor > 60, flat < 0.5.
 type Contact = "good" | "ok" | "poor" | "flat";
@@ -171,6 +172,12 @@ export function DeviceSetup() {
           </table>
         </section>
       </div>
+
+      <section className="panel" aria-labelledby="cam-h">
+        <div className="panel__head"><h2 id="cam-h">Camera check</h2><span className="spacer" />
+          <span className="small muted">Face, head and eyes, and gaze calibration for this person and screen</span></div>
+        <div className="panel__body"><CameraPanel /></div>
+      </section>
 
       <section className="panel" aria-labelledby="check-h">
         <div className="panel__head"><h2 id="check-h">Guided signal check</h2><span className="spacer" />

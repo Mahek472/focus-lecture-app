@@ -7,6 +7,7 @@ import { Watch } from "./screens/Watch";
 import { Recap } from "./screens/Recap";
 import { Participants, ParticipantDetail } from "./screens/Participants";
 import { SettingsScreen } from "./screens/Settings";
+import { CameraReview } from "./screens/CameraReview";
 
 export function App() {
   const { source } = useSource();
@@ -19,6 +20,7 @@ export function App() {
         </div>
         <NavLink to="/sessions"><span>Sessions</span></NavLink>
         <NavLink to="/participants"><span>Participants</span></NavLink>
+        <NavLink to="/camera-review"><span>Camera review</span></NavLink>
         <NavLink to="/settings"><span>Settings</span></NavLink>
         <div className="nav__foot">
           {source.kind === "mock" ? "Mock data: no hardware or backend needed." : "Connected to the backend on :8000."}
@@ -35,6 +37,7 @@ export function App() {
           <Route path="/participants" element={<Participants />} />
           <Route path="/participants/:id" element={<ParticipantDetail />} />
           <Route path="/settings" element={<SettingsScreen />} />
+          <Route path="/camera-review" element={<CameraReview />} />
           <Route path="*" element={<div className="page"><h1>Page not found</h1></div>} />
         </Routes>
       </main>
