@@ -60,8 +60,8 @@ export class WebSocketSource implements DataSource {
     writeLocal(LOCAL_SESSIONS, this.sessions);
     return r;
   }
-  async startCalibration(runId: string) {
-    await http("/calibration/start", { method: "POST", body: JSON.stringify({ run_id: runId }) });
+  async startCalibration(runId: string, opts?: { n_blocks: number; block_s: number }) {
+    await http("/calibration/start", { method: "POST", body: JSON.stringify({ run_id: runId, ...opts }) });
   }
   async getLapses(runId: string) {
     const r = await http<Lapse[] | { lapses: Lapse[] }>(`/run/${runId}/lapses`);
@@ -149,6 +149,8 @@ export class WebSocketSource implements DataSource {
   startSignalCheck(port: string, routeRld: boolean, handler: (u: SignalCheckUpdate) => void): Unsubscribe {
     let stop = false;
     const poll = async () => {
+      // the backend keeps the board open between sessions; free the serial port for the checker
+      await fetch(`${API}/board/release`, { method: "POST" }).catch(() => {});
       try {
         await fetch("/agent/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ port, rld: routeRld }) });
       } catch { /* no agent (e.g. production build): fall back to a checker started by hand */ }

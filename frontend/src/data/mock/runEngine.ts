@@ -17,13 +17,13 @@ export interface LapseRules {
   end_above: number;     // 0.5
   end_for_s: number;     // 4
   camera_override_s: number; // 3
-  intervention_after_s: number; // 10
-  cooldown_s: number;    // 90
+  intervention_after_s: number; // 5 (contract: 10)
+  cooldown_s: number;    // 30 (contract: 90)
 }
 
 export const DEFAULT_RULES: LapseRules = {
   smoothing_s: 5, start_below: 0.4, start_for_s: 8, end_above: 0.5, end_for_s: 4,
-  camera_override_s: 3, intervention_after_s: 10, cooldown_s: 90,
+  camera_override_s: 3, intervention_after_s: 5, cooldown_s: 30,
 };
 
 type Out = FocusUpdate | BandPowerUpdate | LapseEvent | InterventionEvent | StatusUpdate;

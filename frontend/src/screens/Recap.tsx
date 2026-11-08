@@ -14,7 +14,7 @@ import { exportCsv, exportPng } from "../lib/exporters";
 import { forceSimVideo } from "../lib/flags";
 import { fmtTime, lapseReason, pct } from "../lib/format";
 import { CAMERA_LABEL, computeInsights, distractions, type Distraction, type Insights } from "../lib/insights";
-import { geminiRecap, geminiStatus, type GeminiRecap } from "../lib/gemini";
+import { geminiRecap, geminiStatus, type GeminiPart, type GeminiRecap } from "../lib/gemini";
 
 const LANGUAGES = [["en", "English"], ["es", "Español"], ["fr", "Français"], ["hi", "हिन्दी"], ["zh", "中文"]] as const;
 
@@ -96,7 +96,6 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
     source.getRecap(runId, lang).then(setRecap).catch((e) => setError(e instanceof Error ? e.message : "Recap unavailable"));
   }, [source, runId, lang]);
   useEffect(() => { void geminiStatus().then(setGStatus); }, []);
-  useEffect(() => { setAi(null); setAiError(""); }, [lang]);
 
   // the distraction log: EEG lapses and webcam "away" episodes, with video timestamps
   const dist = useMemo<Distraction[]>(() => {
@@ -116,6 +115,15 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
     catch (e) { setAiError(e instanceof Error ? e.message : "Gemini recap failed"); }
     finally { setAiBusy(false); }
   };
+  // Only Gemini can write other languages (the backend recap is English only): picking a language
+  // (re)writes the Gemini recap in it, so the switch always changes what's on screen.
+  const langSeen = useRef(lang);
+  useEffect(() => {
+    if (langSeen.current === lang) return;
+    langSeen.current = lang;
+    setAi(null); setAiError("");
+    if (gStatus?.configured && dist.length) void runGemini();
+  }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const replay = (i: number) => { setSel(i); video.current?.seek(Math.max(0, dist[i].start - 3)); video.current?.play(); };
 
   return (
@@ -131,7 +139,9 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
             {recap?.note && <p className="small muted" style={{ marginTop: 4 }}>{recap.note}</p>}
           </div>
           <label className="field"><span>Recap language</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value)}>{LANGUAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <select value={lang} onChange={(e) => setLang(e.target.value)} disabled={aiBusy}>{LANGUAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <span className="small muted">{gStatus?.configured ? (aiBusy ? "Gemini is writing the recap…" : "The Gemini recap is written in this language.")
+              : "Other languages need the Gemini recap (GEMINI_API_KEY)."}</span>
           </label>
         </div>
       </section>
@@ -197,7 +207,7 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
           <div className="panel__head">
             <h2 id="recap-h">{d ? (aiPart ? aiPart.title : `What was said ${fmtTime(d.start)}–${fmtTime(d.end)}`) : "Recap"}</h2>
             <span className="spacer" />
-            {!aiPart && (
+            {(aiPart || item) && (
               <div className="segmented" role="tablist" aria-label="Recap format">
                 <button role="tab" aria-selected={view === "summary"} aria-pressed={view === "summary"} onClick={() => setView("summary")}>Summary</button>
                 <button role="tab" aria-selected={view === "cards"} aria-pressed={view === "cards"} onClick={() => setView("cards")}>Flashcards</button>
@@ -209,12 +219,20 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
               <>
                 <p className="small"><span className={`status status--${aiPart.importance === "core" ? "warn" : "neutral"}`}>
                   {aiPart.importance === "core" ? "Core idea: later parts build on this" : aiPart.importance === "supporting" ? "Supporting detail" : "Aside"}</span></p>
-                <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8, fontSize: 15, lineHeight: 1.55 }}>{aiPart.summary.map((x, i) => <li key={i}>{x}</li>)}</ul>
-                {aiPart.key_terms.length > 0 && (
-                  <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 12px" }}>
-                    {aiPart.key_terms.map((k, i) => <div key={i} style={{ display: "contents" }}><dt style={{ fontWeight: 600 }}>{k.term}</dt><dd style={{ margin: 0 }}>{k.meaning}</dd></div>)}
-                  </dl>)}
-                <Flashcard key={`ai-${sel}`} front={aiPart.check_question.question} back={aiPart.check_question.answer} n={1} />
+                {view === "summary" ? (
+                  <>
+                    <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8, fontSize: 15, lineHeight: 1.55 }}>{aiPart.summary.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                    {aiPart.key_terms.length > 0 && (
+                      <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 12px" }}>
+                        {aiPart.key_terms.map((k, i) => <div key={i} style={{ display: "contents" }}><dt style={{ fontWeight: 600 }}>{k.term}</dt><dd style={{ margin: 0 }}>{k.meaning}</dd></div>)}
+                      </dl>)}
+                  </>
+                ) : (
+                  // Gemini's cards for this part: its flashcards, the check question, and one per key term
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                    {aiCards(aiPart).map((c, i) => <Flashcard key={`ai-${sel}-${i}`} front={c.front} back={c.back} n={i + 1} />)}
+                  </div>
+                )}
               </>
             ) : !item ? (
               <p className="muted">{d.snippet ? `“${d.snippet}”` : "No transcript for this part."} {gStatus?.configured ? "Write the Gemini recap above for a summary." : ""}</p>
@@ -419,6 +437,14 @@ function InsightsView({ info, hist, onReview }: { info: RunInfo; hist: RunHistor
       </section>
     </div>
   );
+}
+
+function aiCards(p: GeminiPart) {
+  const cards = [...(p.flashcards ?? []).map((c) => ({ front: c.question, back: c.answer })),
+    { front: p.check_question.question, back: p.check_question.answer },
+    ...p.key_terms.map((k) => ({ front: `What does "${k.term}" mean?`, back: k.meaning }))];
+  const seen = new Set<string>();
+  return cards.filter((c) => { const k = c.front.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
 function Flashcard({ front, back, n }: { front: string; back: string; n: number }) {

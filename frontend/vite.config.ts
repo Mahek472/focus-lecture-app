@@ -116,6 +116,7 @@ const RECAP_SCHEMA = {
       summary: { type: "ARRAY", items: { type: "STRING" } },
       key_terms: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, meaning: { type: "STRING" } }, required: ["term", "meaning"] } },
       check_question: { type: "OBJECT", properties: { question: { type: "STRING" }, answer: { type: "STRING" } }, required: ["question", "answer"] },
+      flashcards: { type: "ARRAY", items: { type: "OBJECT", properties: { question: { type: "STRING" }, answer: { type: "STRING" } }, required: ["question", "answer"] } },
       importance: { type: "STRING", enum: ["core", "supporting", "aside"] },
     }, required: ["index", "title", "summary", "key_terms", "check_question", "importance"] } },
     study_tips: { type: "ARRAY", items: { type: "STRING" } },
@@ -140,6 +141,7 @@ Write a focused recap of ONLY what the student missed, for a learner who may hav
 - title: a 3-6 word label for the part.
 - importance: "core" if later material depends on it, "supporting" for examples/details, "aside" for tangents.
 - check_question: one quick question (with answer) to confirm understanding.
+- flashcards: 3-5 short question/answer study cards covering the part's main facts (different from check_question).
 - overview: 2-3 sentences tying the missed parts to the lecture as a whole. Encouraging, never judgemental; do not mention attention, EEG or distraction.
 - study_tips: 2-3 specific, practical ways to review this material.
 - index is the 1-based part number. Write everything in ${lang}. Do not invent content that is not in the clips or transcript.`;
@@ -214,8 +216,14 @@ function geminiAgent(env: Record<string, string>): Plugin {
         if (!Array.isArray(r.parts) || !r.parts.length) return send(400, { error: "no parts to recap" });
         if (r.youtube && !/^[\w-]{11}$/.test(r.youtube)) r.youtube = undefined;
         try {
-          const { result, model: used } = await recapWithFallback(key(), models(), r, true);
-          return send(200, { ...result, model: used, used_video: !!r.youtube });
+          let out;
+          try { out = await recapWithFallback(key(), models(), r, true); }
+          catch (first) {   // video requests often hit "high demand": one more try before the transcript
+            if (!r.youtube) throw first;
+            await new Promise((ok) => setTimeout(ok, 3000));
+            out = await recapWithFallback(key(), models(), r, true);
+          }
+          return send(200, { ...out.result, model: out.model, used_video: !!r.youtube });
         } catch (e) {
           if (!r.youtube) return send(502, { error: (e as Error).message });
           try {   // a private / region-locked video, or no model could take video: fall back to the transcript

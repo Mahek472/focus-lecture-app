@@ -2,7 +2,7 @@
 
 Lectures are the BBBD Experiment 2 stimuli of 2-3 min. They play from local copies in
 frontend/public/media/ (served by Vite at /media/, so nothing loads from YouTube during the demo);
-the YouTube id stays for the Gemini recap. stim1 (3.5 min) is the calibration filler clip.
+the YouTube id stays for the Gemini recap. stim4 (6.5 min) is the calibration filler clip.
 Transcripts: a real one can be dropped in as backend/transcripts/<lecture_id>.json
 ([{start, end, text}], e.g. from Whisper). Without it, PLACEHOLDER lines are served (the same
 ones the frontend mock uses); they are not the videos' real words, and the recap says so.

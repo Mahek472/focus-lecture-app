@@ -17,13 +17,14 @@ export interface Settings {
   sensitivity: number;
   theme: "system" | "light" | "dark";
   captions: boolean;
-  calibrationBlockS: number;   // mock only: 60 s, or 10 s for a quick demo
+  calibrationBlockS: number;   // seconds per calibration block (sent to the backend)
+  calibrationBlocks: number;   // even: watch/count pairs
   mockHum: boolean;            // mock only: add 60 Hz hum
 }
 
 const DEFAULTS: Settings = {
   montage: DEFAULT_MONTAGE, rules: DEFAULT_RULES, notch: 60, intervention: "alert", sensitivity: 0.5,
-  theme: "light", captions: true, calibrationBlockS: 60, mockHum: false,
+  theme: "light", captions: true, calibrationBlockS: 45, calibrationBlocks: 6, mockHum: false,
 };
 const KEY = "wdim.settings";
 
@@ -33,6 +34,10 @@ function load(): Settings {
     if (!v) return DEFAULTS;
     const saved = JSON.parse(v) as Partial<Settings>;
     if (isOldDefault(saved.montage)) saved.montage = DEFAULT_MONTAGE;
+    // earlier builds saved the contract's 10 s / 90 s; the demo defaults are now 5 s / 30 s
+    if (saved.rules?.intervention_after_s === 10 && saved.rules?.cooldown_s === 90) {
+      saved.rules = { ...saved.rules, intervention_after_s: DEFAULT_RULES.intervention_after_s, cooldown_s: DEFAULT_RULES.cooldown_s };
+    }
     return { ...DEFAULTS, ...saved, rules: { ...DEFAULT_RULES, ...(saved.rules ?? {}) } };
   } catch { return DEFAULTS; }
 }

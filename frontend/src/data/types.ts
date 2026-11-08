@@ -138,6 +138,8 @@ export interface StatusUpdate {
   camera?: { face_in_view: boolean; override: boolean; reason?: string }; // not in contract
   baseline?: { active: boolean; ready: boolean; seconds_left: number };   // not in contract: rolling re-centering
   model?: string;                                                           // not in contract: which model is scoring
+  ready?: boolean;          // not in contract: board open, model loaded, EEG buffer full; the video may start
+  buffer_s_left?: number;   // not in contract: seconds until the EEG buffer is full
 }
 
 /** Raw EEG samples. Not in contract: the real backend may never send this. */
@@ -175,6 +177,7 @@ export interface SettingsMessage {
   type: "settings";
   intervention: InterventionMode;
   sensitivity: number;
+  rules?: Record<string, number>;   // not in contract: lapse rules from Settings (backend LapseRules field names)
 }
 
 /** Webcam attention state, computed in the browser (MediaPipe), sent once a second. Not in contract. */
@@ -192,7 +195,10 @@ export interface CameraMessage {
 /** Restart the backend's session baseline (re-centering), e.g. after re-seating the headset. Not in contract. */
 export interface ResetBaseline { type: "reset_baseline" }
 
-export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage | CameraMessage | ResetBaseline;
+/** Watch opened: open the board, load the model and fill the buffer before the video starts. Not in contract. */
+export interface Prepare { type: "prepare" }
+
+export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage | CameraMessage | ResetBaseline | Prepare;
 
 // ---------------------------------------------------------------- local (operator) data
 

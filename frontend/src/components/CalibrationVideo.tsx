@@ -23,7 +23,7 @@ function youtubeId(url: string): string | null {
 
 type Source = { kind: "file"; url: string; name: string } | { kind: "youtube"; id: string } | null;
 
-// Local filler clip (BBBD stim1, not one of the session lectures), loaded by default so calibration
+// Local filler clip (BBBD stim4, 6.5 min, longer than calibration and not one of the session lectures), loaded by default so calibration
 // needs no picking or network; another file or link can still replace it.
 const DEFAULT_CLIP = "/media/calibration.mp4";
 
@@ -33,7 +33,7 @@ export const CalibrationVideo = forwardRef<CalibrationVideoHandle, { overlay?: R
     let live = true;
     fetch(DEFAULT_CLIP, { method: "HEAD" }).then((r) => {
       if (live && r.ok && (r.headers.get("content-type") ?? "").startsWith("video/"))
-        setSrc((s) => s ?? { kind: "file", url: DEFAULT_CLIP, name: "Why are stars star-shaped (BBBD)" });
+        setSrc((s) => s ?? { kind: "file", url: DEFAULT_CLIP, name: "Who invented the internet (BBBD)" });
     }).catch(() => {});
     return () => { live = false; };
   }, []);

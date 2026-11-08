@@ -8,7 +8,8 @@ Scoring (once a second, while the video plays):
 
 Lapse rules (contract, same as the frontend mock's runEngine.ts):
   5 s smoothing; lapse starts after 8 s below 0.4, ends after 4 s above 0.5; camera away for
-  3 s starts a lapse on its own; intervention after a 10 s lapse, 90 s cooldown.
+  3 s starts a lapse on its own; intervention 5 s into a lapse, 30 s cooldown (demo values; the contract
+  says 10 s and 90 s, which allowed one pause per 2.5 min lecture). The UI's Settings can override them.
   Sensitivity shifts the start threshold: 0.4 + (sensitivity - 0.5) * 0.2.
 
 Re-centering (only when reusing a model calibrated in an earlier session): covariances of
@@ -41,8 +42,8 @@ class LapseRules:
     end_above: float = 0.5
     end_for_s: int = 4
     camera_override_s: int = 3
-    intervention_after_s: int = 10
-    cooldown_s: int = 90
+    intervention_after_s: int = 5
+    cooldown_s: int = 30
 
 
 class Recenterer:

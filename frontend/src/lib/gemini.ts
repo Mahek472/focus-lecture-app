@@ -8,6 +8,7 @@ export interface GeminiPart {
   summary: string[];
   key_terms: { term: string; meaning: string }[];
   check_question: { question: string; answer: string };
+  flashcards?: { question: string; answer: string }[];   // 3-5 study cards for the part
   importance: "core" | "supporting" | "aside";
 }
 

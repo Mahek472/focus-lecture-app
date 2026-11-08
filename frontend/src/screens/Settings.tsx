@@ -12,7 +12,7 @@ export function SettingsScreen() {
   return (
     <div className="page" style={{ maxWidth: 1000 }}>
       <div className="page-head">
-        <div><h1>Settings</h1><p>Saved in this browser. The backend applies the lapse rules; these values must match its configuration.</p></div>
+        <div><h1>Settings</h1><p>Saved in this browser. Lapse rules, alerts, sensitivity and calibration length are sent to the backend: rules when Watch opens (and whenever you change them), calibration length when calibration starts.</p></div>
         <button className="btn" onClick={reset}>Restore defaults</button>
       </div>
 
@@ -55,9 +55,29 @@ export function SettingsScreen() {
       </section>
 
       <section className="panel">
+        <div className="panel__head"><h2>Calibration</h2><span className="spacer" />
+          <span className="small muted num">about {Math.round((s.calibrationBlocks * s.calibrationBlockS) / 6) / 10} min</span></div>
+        <div className="panel__body" style={{ display: "grid", gap: 12 }}>
+          <div className="field"><span>Blocks (alternating watch and count)</span>
+            <div className="segmented" role="group" aria-label="Calibration blocks">
+              {[4, 6, 8, 10].map((n) => <button key={n} aria-pressed={s.calibrationBlocks === n} onClick={() => update({ calibrationBlocks: n })}>{n}</button>)}
+            </div>
+          </div>
+          <div className="field"><span>Seconds per block</span>
+            <div className="segmented" role="group" aria-label="Calibration block length">
+              {[30, 45, 60, ...(source.kind === "mock" ? [10] : [])].map((n) => (
+                <button key={n} aria-pressed={s.calibrationBlockS === n} onClick={() => update({ calibrationBlockS: n })}>{n === 10 ? "10 (quick demo)" : n}</button>))}
+            </div>
+          </div>
+          <p className="small muted">More and longer blocks give the model more data. 6 × 45 s is the default; fewer than 6 blocks makes the AUC check noisy.</p>
+        </div>
+      </section>
+
+      <section className="panel">
         <div className="panel__head"><h2>Signal</h2></div>
         <div className="panel__body" style={{ display: "grid", gap: 16 }}>
-          <div className="field"><span>Notch filter (mains frequency)</span>
+          <p className="small muted">These change how the EEG traces are drawn. The model's own filtering (1–40 Hz) and channel order are fixed in the backend.</p>
+          <div className="field"><span>Notch filter for the traces (mains frequency)</span>
             <div className="segmented" role="group" aria-label="Notch filter">
               <button aria-pressed={s.notch === 60} onClick={() => update({ notch: 60 })}>60 Hz (North America)</button>
               <button aria-pressed={s.notch === 50} onClick={() => update({ notch: 50 })}>50 Hz</button>
@@ -104,12 +124,6 @@ export function SettingsScreen() {
             : "FastAPI backend on :8000 (REST and /ws), signal checker on :8766."}</p>
           {source.kind === "mock" && (
             <>
-              <div className="field"><span>Calibration block length (mock)</span>
-                <div className="segmented" role="group" aria-label="Calibration block length">
-                  <button aria-pressed={s.calibrationBlockS === 60} onClick={() => update({ calibrationBlockS: 60 })}>60 s, as in a real session</button>
-                  <button aria-pressed={s.calibrationBlockS === 10} onClick={() => update({ calibrationBlockS: 10 })}>10 s, quick demo</button>
-                </div>
-              </div>
               <label style={{ display: "flex", gap: 8 }}><input type="checkbox" checked={s.mockHum} onChange={(e) => update({ mockHum: e.target.checked })} />Add 60 Hz mains hum to the simulated EEG</label>
             </>
           )}

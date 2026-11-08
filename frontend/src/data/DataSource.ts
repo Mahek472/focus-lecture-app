@@ -21,7 +21,7 @@ export interface DataSource {
   getTranscript(lectureId: string): Promise<TranscriptLine[]>;
   listSessions(): Promise<SessionSummary[]>;
   startSession(req: StartSessionRequest): Promise<{ run_id: string }>;
-  startCalibration(runId: string): Promise<void>;
+  startCalibration(runId: string, opts?: { n_blocks: number; block_s: number }): Promise<void>;
   getLapses(runId: string): Promise<Lapse[]>;
   getRecap(runId: string, language: string): Promise<Recap>;
   stopRun(runId: string): Promise<void>;

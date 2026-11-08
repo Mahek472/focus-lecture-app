@@ -46,6 +46,7 @@ export function Watch() {
   const [ended, setEnded] = useState(false);
   const [markerOpen, setMarkerOpen] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [started, setStarted] = useState(false);   // the video is held until the backend is ready (live backend only)
   const lastSent = useRef({ t: -1, playing: false, at: 0 });
   const playingRef = useRef(false);   // camera samples are recorded only while the video plays
 
@@ -60,8 +61,14 @@ export function Watch() {
     return () => { recorder.detach(); source.disconnect(); };
   }, [ready, runId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (conn === "open") source.send({ type: "settings", intervention: settings.intervention, sensitivity: settings.sensitivity });
+    if (conn !== "open") return;
+    source.send({ type: "prepare" });   // backend: open the board, load the model, fill the buffer
   }, [conn]); // eslint-disable-line react-hooks/exhaustive-deps
+  // settings, including the lapse rules, on connect and whenever they change
+  useEffect(() => {
+    if (conn !== "open") return;
+    source.send({ type: "settings", intervention: settings.intervention, sensitivity: settings.sensitivity, rules: { ...settings.rules } });
+  }, [conn, settings.intervention, settings.sensitivity, settings.rules]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // one entry per second of video: a rewind re-watches those seconds and replaces them
   useServerMessage("focus", (m) => setFocus((f) => {
@@ -115,20 +122,23 @@ export function Watch() {
     return () => clearInterval(id);
   }, [cam.running, source, recorder, runId]);
 
+  const interventionRef = useRef<InterventionEvent | null>(null);
+  interventionRef.current = intervention;
   const respond = useCallback((choice: InterventionResponse["choice"]) => {
-    setIntervention((ev) => {
-      if (!ev) return null;
-      source.send({ type: "intervention_response", choice, t_video: ev.t_video });
-      recorder.recordResponse(runId, choice, ev.t_video);
-      if (choice === "focused") {
-        source.send({ type: "feedback", kind: "false_alarm", t_video: ev.t_video });
-        recorder.dismissLapse(runId, ev.t_video);
-        setLapses((l) => l.map((lp) => (lp.start - 2 <= ev.t_video && ev.t_video <= lp.end + 15 ? { ...lp, dismissed: true } : lp)));
-      }
-      if (choice === "rewind") video.current?.seek(ev.rewind_to);
-      video.current?.play();
-      return null;
-    });
+    // side effects outside the state updater: React runs updaters twice in dev (StrictMode)
+    const ev = interventionRef.current;
+    if (!ev) return;
+    interventionRef.current = null;
+    setIntervention(null);
+    source.send({ type: "intervention_response", choice, t_video: ev.t_video });
+    recorder.recordResponse(runId, choice, ev.t_video);
+    if (choice === "focused") {
+      source.send({ type: "feedback", kind: "false_alarm", t_video: ev.t_video });
+      recorder.dismissLapse(runId, ev.t_video);
+      setLapses((l) => l.map((lp) => (lp.start - 2 <= ev.t_video && ev.t_video <= lp.end + 15 ? { ...lp, dismissed: true } : lp)));
+    }
+    if (choice === "rewind") video.current?.seek(ev.rewind_to);
+    video.current?.play();
   }, [source, recorder, runId]);
 
   const addMarker = (label: string) => {
@@ -152,6 +162,8 @@ export function Watch() {
     try { await source.stopRun(runId); } finally { nav(`/recap/${runId}`); }
   };
 
+  const gated = source.kind === "websocket";
+  const backendReady = conn === "open" && !!status?.ready;
   const points = useMemo(() => toPoints(focus), [focus]);
   const latest = points.at(-1);
   const latestRaw = focus.at(-1);
@@ -201,6 +213,31 @@ export function Watch() {
           <VideoPlayer ref={video} src={info.lecture.video || undefined} youtube={info.lecture.youtube} length_s={info.lecture.length_s}
             title={info.lecture.title} transcript={transcript} captions={captions} onState={onVideoState} onEnded={() => setEnded(true)} forceSim={forceSimVideo()} />
           {intervention && <InterventionOverlay event={intervention} onChoice={respond} />}
+          {gated && !started && (
+            <div role="status" aria-live="polite" style={{ position: "absolute", inset: 0, zIndex: 5, display: "grid", placeItems: "center",
+              background: "rgba(11, 15, 19, 0.82)", color: "#fff", textAlign: "center", padding: 24 }}>
+              <div style={{ display: "grid", gap: 12, justifyItems: "center", maxWidth: 420 }}>
+                {backendReady ? (
+                  <>
+                    <strong style={{ fontSize: 18 }}>Headset and model ready</strong>
+                    <button className="btn btn--primary" onClick={() => { setStarted(true); video.current?.play(); }}>Start the lecture</button>
+                  </>
+                ) : status?.state === "error" && status.message ? (
+                  <>
+                    <strong style={{ fontSize: 16 }}>{status.message}</strong>
+                    <button className="btn" onClick={() => source.send({ type: "prepare" })}>Try again</button>
+                  </>
+                ) : (
+                  <>
+                    <strong style={{ fontSize: 16 }}>{conn !== "open" ? "Connecting to the backend…"
+                      : status?.buffer_s_left != null ? `Collecting EEG… ${Math.ceil(status.buffer_s_left)} s`
+                      : status?.message ?? "Getting the headset ready…"}</strong>
+                    <span className="small" style={{ opacity: 0.8 }}>The lecture starts once the backend can score your EEG, so the video and the focus estimate stay in sync.</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {ended && !intervention && (
             <div role="status" style={{ position: "absolute", left: 12, bottom: 64, background: "var(--raised)", border: "1px solid var(--rule-strong)",
               borderRadius: 4, padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", zIndex: 4 }}>

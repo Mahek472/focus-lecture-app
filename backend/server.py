@@ -9,6 +9,11 @@ WebSocket loop streams EEG, scores a window every second while the video plays, 
 lapse rules and the camera override, and sends focus / bands / lapse / intervention / status.
 Without a calibration in this session, the participant's latest saved model is used with rolling
 re-centering. POST /run/{id}/stop saves the run (EEG + focus log + lapses) to recordings/live/.
+
+Watch sends {type: "prepare"} when it opens: the backend opens the board (about 20 s if it isn't
+open yet), loads the model and fills the 10 s EEG buffer, then reports status.ready = true; the
+UI holds the video until then. The board stays open between sessions (opening it is slow);
+POST /board/release frees the port for Device setup's signal checker.
 Live mode only: replay runs are refused (the frontend's mock mode covers replay demos).
 """
 import asyncio
@@ -30,7 +35,9 @@ sys.path.insert(0, HERE)
 from calibration import run_calibration  # noqa: E402
 from content import LECTURES, lecture, snippet, transcript  # noqa: E402
 from focus_model import FocusModel  # noqa: E402
-from live import BUFFER_S, LiveEngine  # noqa: E402
+from dataclasses import fields
+
+from live import BUFFER_S, LapseRules, LiveEngine  # noqa: E402
 from sources import BoardSource  # noqa: E402
 
 REC = os.path.join(ROOT, "recordings")
@@ -52,7 +59,9 @@ class Run:
         self.focus_log, self.lapses, self.camera_log, self.events = [], [], [], []
         self.open_lapse, self.dismiss_open = None, False
         self.state, self.message = "idle", None
-        self.loop_task, self.cal_task = None, None
+        self.loop_task, self.cal_task, self.prep_task = None, None, None
+        self.engine_lock = asyncio.Lock()
+        self.rules = LapseRules()          # the UI's Settings may override these (settings message)
         self.watch_start_sample = None
         self.created = time.time()
 
@@ -87,10 +96,17 @@ async def emit(run, msg):
             run.clients.discard(ws)
 
 
+def is_ready(run):
+    """Engine loaded and a full scoring buffer of EEG in hand: the video can start."""
+    return bool(run.engine and board and board.running and board.total >= BUFFER_S * board.sfreq)
+
+
 async def status(run):
     eng = run.engine
     msg = {"type": "status", "state": run.state, "mode": "live", "message": run.message,
-           "sfreq": board.sfreq if board else None, "model": run.model_origin}
+           "sfreq": board.sfreq if board else None, "model": run.model_origin, "ready": is_ready(run)}
+    if eng and not msg["ready"] and board:
+        msg["buffer_s_left"] = round(max(0.0, BUFFER_S - board.total / board.sfreq), 1)
     if eng:
         away = eng.camera_away()
         msg["camera"] = {"face_in_view": away is not None and not away, "override": eng.away_secs >= eng.rules.camera_override_s,
@@ -101,9 +117,22 @@ async def status(run):
 
 
 async def ensure_engine(run):
+    async with run.engine_lock:
+        return await _ensure_engine(run)
+
+
+async def _ensure_engine(run):
     if run.engine:
         return True
-    src = await ensure_board()
+    if board is None or not board.running:
+        run.state, run.message = "connecting", "Opening the headset (about 20 s)"
+        await status(run)
+    try:
+        src = await ensure_board()
+    except Exception as e:  # noqa: BLE001
+        run.state, run.message = "error", f"Couldn't open the headset: {e}. Is the signal checker still running?"
+        await status(run)
+        return False
     recenter = False
     if run.model is None:
         path = latest_saved_model(run.req["participant_id"])
@@ -117,7 +146,7 @@ async def ensure_engine(run):
         run.state, run.message = "error", f"Model channels {run.model.ch_names} don't match the board {src.channels}."
         await status(run)
         return False
-    run.engine = LiveEngine(run.model, src.sfreq, src.channels, run.intervention, run.sensitivity, recenter=recenter)
+    run.engine = LiveEngine(run.model, src.sfreq, src.channels, run.intervention, run.sensitivity, rules=run.rules, recenter=recenter)
     run.watch_start_sample = src.total
     run.state, run.message = "running", None
     await status(run)
@@ -126,7 +155,7 @@ async def ensure_engine(run):
 
 async def run_loop(run):
     """Per run: stream EEG to the traces every 100 ms; score once a second while the video plays."""
-    sent, last_tick, last_status = None, 0.0, 0.0
+    sent, last_tick, last_status, was_ready = None, 0.0, 0.0, False
     while run.clients:
         await asyncio.sleep(0.1)
         if board and board.running:
@@ -144,8 +173,10 @@ async def run_loop(run):
                 t = run.video["t"]
                 for m in await asyncio.to_thread(run.engine.tick, t, buf):
                     await emit(run, m)
-        if now - last_status >= 5:
-            last_status = now
+        ready = is_ready(run)
+        # every second while warming up (the UI shows the countdown), every 5 s after; at once when it turns ready
+        if ready != was_ready or now - last_status >= (5 if ready or not run.engine else 1):
+            last_status, was_ready = now, ready
             await status(run)
 
 
@@ -188,6 +219,12 @@ async def calibration_start(body: dict = Body(...)):
     run = get_run(body.get("run_id", ""))
     if run.cal_task and not run.cal_task.done():
         raise HTTPException(409, "Calibration already running")
+    # from the UI's Settings: an even number of blocks (watch/count pairs, at least 2 pairs) and 10-120 s each
+    n_blocks, block_s = body.get("n_blocks"), body.get("block_s")
+    if n_blocks is not None and (not isinstance(n_blocks, int) or n_blocks % 2 or not 4 <= n_blocks <= 12):
+        raise HTTPException(400, "n_blocks must be an even number from 4 to 12")
+    if block_s is not None and (not isinstance(block_s, (int, float)) or not 10 <= block_s <= 120):
+        raise HTTPException(400, "block_s must be 10-120 s")
 
     async def go():
         try:
@@ -196,7 +233,8 @@ async def calibration_start(body: dict = Body(...)):
             src = await ensure_board()
             run.state, run.message = "calibrating", None
             run.engine = None
-            model, auc, info = await run_calibration(src, run.req["participant_id"], lambda m: emit(run, m))
+            model, auc, info = await run_calibration(src, run.req["participant_id"], lambda m: emit(run, m),
+                                                     block_s=block_s, n_blocks=n_blocks)
             run.model, run.model_origin = model, f"calibrated this session (AUC {auc:.2f}, {info['windows']} windows of 4 s)"
             run.state, run.message = "ready", None
         except Exception as e:  # noqa: BLE001
@@ -249,9 +287,24 @@ async def stop(run_id: str):
         rec = board.recording()[:, run.watch_start_sample:]
         np.savez_compressed(base + "_eeg.npz", data=rec, sfreq=board.sfreq, ch_names=np.array(board.channels),
                             uv_scale="corrected", board="knight")
-    if board:   # free the board for Device setup / the next session
-        board.close(); board = None
+    # the board stays open for the next session (opening it takes ~20 s); /board/release frees it
     return {"ok": True, "saved": os.path.relpath(base, ROOT)}
+
+
+@app.post("/board/release")
+async def board_release():
+    """Device setup calls this before starting the signal checker, which needs the serial port."""
+    global board
+    async with board_lock:
+        if any(r.cal_task and not r.cal_task.done() for r in runs.values()):
+            raise HTTPException(409, "Calibration is running")
+        was = board is not None
+        if board:
+            await asyncio.to_thread(board.close)
+            board = None
+        for r in runs.values():
+            r.engine = None if r.state != "stopped" else r.engine
+    return {"ok": True, "released": was}
 
 
 # ---------------------------------------------------------------------- WebSocket
@@ -279,8 +332,12 @@ async def ws(websocket: WebSocket, run_id: str):
                     run.engine.set_camera(m.get("state", "watching"))
             elif kind == "settings":
                 run.intervention, run.sensitivity = m.get("intervention", run.intervention), float(m.get("sensitivity", run.sensitivity))
+                for f in fields(LapseRules):          # lapse rules from the UI's Settings (numbers only)
+                    v = (m.get("rules") or {}).get(f.name)
+                    if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
+                        setattr(run.rules, f.name, f.type(v) if f.type in (int, float) else v)
                 if run.engine:
-                    run.engine.intervention, run.engine.sensitivity = run.intervention, run.sensitivity
+                    run.engine.intervention, run.engine.sensitivity, run.engine.rules = run.intervention, run.sensitivity, run.rules
             elif kind == "feedback":            # "I was focused": dismiss the lapse around that time
                 run.events.append(m)
                 t = float(m.get("t_video", 0))
@@ -289,6 +346,9 @@ async def ws(websocket: WebSocket, run_id: str):
                 for lp in run.lapses:
                     if lp["start"] - 2 <= t <= lp["end"] + 15:
                         lp["dismissed"] = True
+            elif kind == "prepare":              # Watch opened: get the board, model and buffer ready now
+                if run.state not in ("calibrating", "stopped") and not (run.prep_task and not run.prep_task.done()):
+                    run.prep_task = asyncio.create_task(ensure_engine(run))
             elif kind == "reset_baseline" and run.engine and run.engine.recenterer:
                 run.engine.recenterer.reset()
             else:

@@ -79,11 +79,12 @@ export class MockSource implements DataSource {
     return { run_id };
   }
 
-  async startCalibration(runId: string) {
+  async startCalibration(runId: string, opts?: { n_blocks: number; block_s: number }) {
     const run = this.runs.get(runId);
     if (!run) throw new Error("unknown run");
     clearInterval(this.calTimer);
-    const plan = [...Array(10)].map((_, i) => ({ phase: i < 6 ? "calibration" : "test", task: i % 2 ? "count" : "watch" }) as const);
+    if (opts) this.blockSeconds = opts.block_s;
+    const plan = [...Array(opts?.n_blocks ?? 6)].map((_, i) => ({ phase: "calibration", task: i % 2 ? "count" : "watch" }) as const);
     let block = 0, left = this.blockSeconds;
     const primes = [811, 853, 877, 907, 937, 967, 983, 991, 997, 919];
     this.emit({ type: "status", state: "calibrating", mode: run.req.mode });

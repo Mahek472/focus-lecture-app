@@ -20,7 +20,6 @@ export function App() {
         </div>
         <NavLink to="/sessions"><span>Sessions</span></NavLink>
         <NavLink to="/participants"><span>Participants</span></NavLink>
-        <NavLink to="/camera-review"><span>Camera review</span></NavLink>
         <NavLink to="/settings"><span>Settings</span></NavLink>
         <div className="nav__foot">
           {source.kind === "mock" ? "Mock data: no hardware or backend needed." : "Connected to the backend on :8000."}

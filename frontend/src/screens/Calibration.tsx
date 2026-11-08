@@ -8,9 +8,10 @@ import { TraceViewer } from "../components/TraceViewer";
 import { ConnectionStatus, Icon } from "../components/Status";
 import { fmtTime } from "../lib/format";
 
-// Matches scripts/headset_session.py record: 6 calibration + 4 held-out test blocks, alternating
+// The backend's plan (backend/calibration.py): 6 blocks by default, the count comes from its messages. Alternating
 // watch and count-back-by-7 (the BBBD distractor), so time-on-task drift can't pose as attention.
-const PLAN = [...Array(10)].map((_, i) => ({ phase: i < 6 ? "Calibration" : "Held-out test", task: i % 2 ? "count" : "watch" }));
+const DEFAULT_BLOCKS = 6, DEFAULT_BLOCK_S = 45;
+const planOf = (n: number) => [...Array(n)].map((_, i) => ({ phase: "Calibration", task: i % 2 ? "count" : "watch" }));
 
 function verdict(auc: number) {
   if (auc >= 0.7) return { word: "Works for this person", text: "The model separates watching from counting well enough to use in the lecture.", ok: true };
@@ -40,13 +41,14 @@ export function Calibration() {
   const start = async () => {
     setError(""); setStarted(true); setP(null);
     clip.current?.play();
-    try { await source.startCalibration(runId); } catch (e) { setError(e instanceof Error ? e.message : "Calibration could not start"); setStarted(false); }
+    try { await source.startCalibration(runId, { n_blocks: settings.calibrationBlocks, block_s: settings.calibrationBlockS }); } catch (e) { setError(e instanceof Error ? e.message : "Calibration could not start"); setStarted(false); }
   };
 
   const block = p ? p.block - 1 : -1;
+  const PLAN = planOf(p?.n_blocks ?? settings.calibrationBlocks ?? DEFAULT_BLOCKS);
   const cur = block >= 0 ? PLAN[block] : null;
   const done = !!p?.done;
-  const totalS = (p?.block_s ?? settings.calibrationBlockS) * PLAN.length;
+  const totalS = (p?.block_s ?? settings.calibrationBlockS ?? DEFAULT_BLOCK_S) * PLAN.length;
   const elapsed = p ? (p.block - 1) * p.block_s + (p.block_s - p.seconds_left) : 0;
 
   return (
@@ -144,7 +146,7 @@ export function Calibration() {
                     <p><span className="num" style={{ fontSize: 28, fontWeight: 600 }}>AUC {p.auc.toFixed(2)}</span>
                       <span className={`status status--${v.ok ? "good" : "warn"}`} style={{ marginLeft: 12 }}><Icon name={v.ok ? "good" : "warn"} />{v.word}</span></p>
                     <p>{v.text}</p>
-                    <p className="small muted">AUC measures how well the held-out blocks are separated: 0.5 is chance, 1.0 is perfect. On the public BBBD dataset, calibrated people averaged 0.87 with these 8 channels.</p>
+                    <p className="small muted">AUC measures how well each watch/count pair is separated by a model trained on the other pairs: 0.5 is chance, 1.0 is perfect. On the public BBBD dataset, calibrated people averaged 0.87 with these 8 channels.</p>
                     <div className="toolbar">
                       <button className="btn btn--primary" onClick={() => nav(`/watch/${runId}`)} disabled={p.auc < 0.6}>Start the lecture</button>
                       <button className="btn" onClick={start}>Repeat calibration</button>

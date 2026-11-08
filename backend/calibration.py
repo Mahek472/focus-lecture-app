@@ -1,10 +1,10 @@
-"""Live calibration on the headset: 6 calibration + 4 held-out test blocks, alternating
-watch / count back by 7 (BBBD's distractor), like scripts/headset_session.py record.
+"""Live calibration on the headset: 6 blocks (default 45 s each, about 4.5 min), alternating
+watch / count back by 7 (BBBD's distractor). Shorter than scripts/headset_session.py record's 10
+blocks for the demo; 4 s windows with a 2 s step during training make up for the shorter blocks.
 
 Model: focus_model.FocusModel with 4 s windows (on BBBD about +0.03 AUC over 2 s; the backend's
 5 s smoothing and 8 s lapse rule make the extra latency irrelevant). Reported AUC: leave one
-watch/count block pair out over all 10 blocks (in the BBBD rehearsal this was stable, while
-4 held-out blocks alone were noisy). The final model is trained on all 10 blocks and saved as
+watch/count block pair out (3 pairs). The final model is trained on all blocks and saved as
 recordings/<participant>_live_model.joblib for reuse in later sessions.
 """
 import asyncio
@@ -15,14 +15,22 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 
 from focus_model import FocusModel, clean, to_bands
-from preprocess import windows
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REC = os.path.join(ROOT, "recordings")
-WIN_S, SETTLE_S = 4.0, 5.0
+WIN_S, STEP_S, SETTLE_S = 4.0, 2.0, 5.0
+N_BLOCKS = int(os.environ.get("CAL_BLOCKS", 6))   # even: watch/count pairs
 BLINK_UV = float(os.environ.get("BLINK_UV", 150))   # raise only for BrainFlow's synthetic board
 PRIMES = [p for p in range(801, 1000) if all(p % d for d in range(2, int(p ** 0.5) + 1))]
-PLAN = [("calibration" if i < 6 else "test", "watch" if i % 2 == 0 else "count") for i in range(10)]
+def plan(n_blocks=N_BLOCKS):
+    return [("calibration", "watch" if i % 2 == 0 else "count") for i in range(n_blocks)]
+
+
+def windows(data, sf, win_s, step_s=STEP_S):
+    """Overlapping windows (4 s every 2 s), [n, ..., samples]."""
+    n, step = int(round(win_s * sf)), int(round(step_s * sf))
+    starts = np.arange(0, data.shape[-1] - n + 1, step)
+    return np.stack([data[..., s:s + n] for s in starts], axis=0) if len(starts) else np.zeros((0, *data.shape[:-1], n)), starts / sf
 
 
 def block_windows(x, xb, sf, start, end, model):
@@ -62,9 +70,11 @@ def train(recording, sf, channels, blocks):
     return model, auc, {"windows": int(len(y)), "pair_aucs": [round(a, 3) for a in aucs]}
 
 
-async def run_calibration(source, participant, emit, block_s=None):
-    """Runs the block protocol on a BoardSource, sending `calibration` messages through emit()."""
-    block_s = int(block_s or os.environ.get("CAL_BLOCK_S", 60))
+async def run_calibration(source, participant, emit, block_s=None, n_blocks=None):
+    """Runs the block protocol on a BoardSource, sending `calibration` messages through emit().
+    block_s / n_blocks come from the UI's Settings (else CAL_BLOCK_S / CAL_BLOCKS, 45 s x 6)."""
+    block_s = int(block_s or os.environ.get("CAL_BLOCK_S", 45))
+    PLAN = plan(int(n_blocks or N_BLOCKS))
     blocks = []
     for k, (phase, task) in enumerate(PLAN):
         start = source.total
