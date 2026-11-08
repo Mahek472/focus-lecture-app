@@ -1,7 +1,7 @@
 .venv/
 __pycache__/
-data/
-recordings/
+/data/
+/recordings/
 experiment/static/media/
 *.npz
 *.joblib

@@ -1,0 +1,64 @@
+/* Design tokens. One warm colour (--signal) is reserved for lapse regions and warnings.
+   Band hues are Okabe-Ito (colour-blind safe) and used for the four bands everywhere. */
+
+:root {
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+
+  /* light */
+  --bg: #e9edf1;            /* slate mist */
+  --surface: #f5f7f9;       /* paper slate */
+  --raised: #fbfcfd;        /* primary instrument panels */
+  --rule: #cbd3db;
+  --rule-strong: #9aa6b2;
+  --text: #1c2530;          /* graphite */
+  --text-muted: #5a6673;
+  --ink: #23303d;           /* EEG traces and the focus line */
+  --ink-soft: rgba(35, 48, 61, 0.14);
+  --grid: rgba(35, 48, 61, 0.08);
+  --signal: #c2571a;        /* amber signal: lapses + warnings only */
+  --signal-soft: rgba(194, 87, 26, 0.16);
+  --ok: #2f6f52;            /* quality good (always paired with an icon and a word) */
+  --check: #8a6d1f;         /* quality check */
+  --accent: #2c5a85;        /* interactive: buttons, focus ring, selection */
+  --accent-soft: rgba(44, 90, 133, 0.12);
+  --truth-attentive: #b9c7d4;
+  --truth-distracted: #5f7387;
+
+  --band-delta: #56b4e9;
+  --band-theta: #009e73;
+  --band-alpha: #0072b2;
+  --band-beta: #cc79a7;
+
+  --fs-axis: 12px;
+  --fs-small: 13px;
+  --fs-body: 14px;
+  --fs-panel: 16px;
+  --fs-title: 20px;
+  --fs-readout: 28px;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --radius: 4px;
+  --nav-w: 208px;
+  --shadow-overlay: 0 8px 24px rgba(20, 30, 40, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161b; --surface: #171d23; --raised: #1d242c; --rule: #2b343e; --rule-strong: #46525f;
+    --text: #e2e8ee; --text-muted: #8c98a5; --ink: #c8d3de; --ink-soft: rgba(200, 211, 222, 0.16);
+    --grid: rgba(200, 211, 222, 0.08); --signal: #e8823f; --signal-soft: rgba(232, 130, 63, 0.2);
+    --ok: #5fb38a; --check: #d1b05a; --accent: #7fb0dc; --accent-soft: rgba(127, 176, 220, 0.14);
+    --truth-attentive: #3a4856; --truth-distracted: #8fa3b6;
+    --band-delta: #7cc7ee; --band-theta: #2dbe92; --band-alpha: #4c9bdb; --band-beta: #e092bf;
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161b; --surface: #171d23; --raised: #1d242c; --rule: #2b343e; --rule-strong: #46525f;
+  --text: #e2e8ee; --text-muted: #8c98a5; --ink: #c8d3de; --ink-soft: rgba(200, 211, 222, 0.16);
+  --grid: rgba(200, 211, 222, 0.08); --signal: #e8823f; --signal-soft: rgba(232, 130, 63, 0.2);
+  --ok: #5fb38a; --check: #d1b05a; --accent: #7fb0dc; --accent-soft: rgba(127, 176, 220, 0.14);
+  --truth-attentive: #3a4856; --truth-distracted: #8fa3b6;
+  --band-delta: #7cc7ee; --band-theta: #2dbe92; --band-alpha: #4c9bdb; --band-beta: #e092bf;
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
