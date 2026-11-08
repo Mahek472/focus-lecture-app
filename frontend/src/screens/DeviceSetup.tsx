@@ -86,21 +86,21 @@ export function DeviceSetup() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(300px, 1fr) minmax(320px, 1.3fr)", gap: 16, alignItems: "start" }} className="setup-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 320px) minmax(0, 1fr) minmax(0, 1.3fr)", gap: 16, alignItems: "start" }} className="setup-grid">
         <section className="panel" aria-labelledby="conn-h">
           <div className="panel__head"><h2 id="conn-h">Board connection</h2></div>
-          <div className="panel__body" style={{ display: "grid", gap: 12 }}>
+          <div className="panel__body" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
             <div className="notice notice--info">Close the NeuroPawn EXG Visualizer first. Only one program can use the board at a time.</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", minWidth: 0 }}>
               {ports.length ? (
-                <label className="field" style={{ flex: 1 }}><span>Serial port</span>
-                  <select value={port} onChange={(e) => setPort(e.target.value)} disabled={connected}>
+                <label className="field" style={{ flex: 1, minWidth: 0 }}><span>Serial port</span>
+                  <select style={{ width: "100%", minWidth: 0, textOverflow: "ellipsis" }} value={port} onChange={(e) => setPort(e.target.value)} disabled={connected}>
                     {ports.map((p) => <option key={p.port} value={p.port}>{p.port}: {p.description}</option>)}
                   </select>
                 </label>
               ) : (
-                <label className="field" style={{ flex: 1 }}><span>Serial port (no ports found: plug in the board and refresh)</span>
-                  <input type="text" value={port} onChange={(e) => setPort(e.target.value.toUpperCase())} placeholder="COM7" disabled={connected} />
+                <label className="field" style={{ flex: 1, minWidth: 0 }}><span>Serial port (no ports found: plug in the board and refresh)</span>
+                  <input type="text" value={port} onChange={(e) => setPort(e.target.value.toUpperCase())} placeholder="COM7" disabled={connected} style={{ width: "100%", minWidth: 0 }} />
                 </label>
               )}
               <button className="btn" disabled={connected} onClick={refreshPorts}>Refresh</button>
@@ -202,8 +202,9 @@ export function DeviceSetup() {
           })}
         </div>
       </section>
-      <style>{`@media (max-width: 1180px) { .setup-grid { grid-template-columns: 1fr 1fr !important; } }
-               @media (max-width: 760px) { .setup-grid { grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 1180px) { .setup-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; } }
+               @media (max-width: 760px) { .setup-grid { grid-template-columns: minmax(0, 1fr) !important; } }
+               .setup-grid > .panel { min-width: 0; }`}</style>
     </div>
   );
 }

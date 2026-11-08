@@ -47,6 +47,7 @@ export function Watch() {
   const [markerOpen, setMarkerOpen] = useState(false);
   const [stopping, setStopping] = useState(false);
   const lastSent = useRef({ t: -1, playing: false, at: 0 });
+  const playingRef = useRef(false);   // camera samples are recorded only while the video plays
 
   const ready = info && info !== "missing";
   const transcript = ready ? info.transcript : [];
@@ -87,6 +88,7 @@ export function Watch() {
 
   const onVideoState = useCallback((now: number, playing: boolean) => {
     setT(now);
+    playingRef.current = playing;
     recorder.setVideoTime(now);
     const L = lastSent.current, ms = performance.now();
     // contract: every second while playing, and on play / pause / seek
@@ -104,22 +106,25 @@ export function Watch() {
     const id = window.setInterval(() => {
       const r = camera.last;
       if (!r.running) return;
-      source.send({ type: "camera", t_video: +tRef.current.toFixed(2), state: r.state, face: r.face, head_turned: r.headTurned,
-        head_down: r.headDown, eyes_off: r.eyesOff, blink_rate: r.blinkRate == null ? null : Math.round(r.blinkRate) });
+      const t_video = +tRef.current.toFixed(2), blink_rate = r.blinkRate == null ? null : Math.round(r.blinkRate);
+      source.send({ type: "camera", t_video, state: r.state, face: r.face, head_turned: r.headTurned,
+        head_down: r.headDown, eyes_off: r.eyesOff, blink_rate });
+      if (playingRef.current) recorder.recordCamera(runId, { t_video, state: r.state, blink_rate });
     }, 1000);
     return () => clearInterval(id);
-  }, [cam.running, source]);
+  }, [cam.running, source, recorder, runId]);
 
   const respond = useCallback((choice: InterventionResponse["choice"]) => {
     setIntervention((ev) => {
       if (!ev) return null;
       source.send({ type: "intervention_response", choice, t_video: ev.t_video });
+      recorder.recordResponse(runId, choice, ev.t_video);
       if (choice === "focused") source.send({ type: "feedback", kind: "false_alarm", t_video: ev.t_video });
       if (choice === "rewind") video.current?.seek(ev.rewind_to);
       video.current?.play();
       return null;
     });
-  }, [source]);
+  }, [source, recorder, runId]);
 
   const addMarker = (label: string) => {
     const m = recorder.addMarker(runId, label, t);
