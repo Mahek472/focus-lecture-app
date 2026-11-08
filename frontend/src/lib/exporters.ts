@@ -15,7 +15,7 @@ export function exportCsv(hist: RunHistory, name: string, range?: [number, numbe
     "in_lapse", "lapse_reason", "camera_state", "truth", "marker", "delta_mean", "theta_mean", "alpha_mean", "beta_mean"];
   const rows = pts.map((p) => {
     const lapse = hist.lapses.find((l) => p.t >= l.start && p.t <= l.end), inLapse = !!lapse;
-    const cam = hist.camera?.find((c) => Math.round(c.t) === Math.round(p.t))?.state ?? "";
+    const cam = hist.camera?.find((c) => Math.round(c.t_video) === Math.round(p.t))?.state ?? "";
     const marker = hist.markers.filter((m) => Math.round(m.t_video) === Math.round(p.t)).map((m) => m.label).join("; ");
     const b = bandsAt.get(Math.round(p.t));
     const mean = (k: "delta" | "theta" | "alpha" | "beta") => {

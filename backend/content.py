@@ -1,6 +1,8 @@
 """Lectures and transcripts served by the backend.
 
-Lectures are the BBBD Experiment 2 stimuli the experiment and the frontend use (YouTube embeds).
+Lectures are the BBBD Experiment 2 stimuli of 2-3 min. They play from local copies in
+frontend/public/media/ (served by Vite at /media/, so nothing loads from YouTube during the demo);
+the YouTube id stays for the Gemini recap. stim1 (3.5 min) is the calibration filler clip.
 Transcripts: a real one can be dropped in as backend/transcripts/<lecture_id>.json
 ([{start, end, text}], e.g. from Whisper). Without it, PLACEHOLDER lines are served (the same
 ones the frontend mock uses); they are not the videos' real words, and the recap says so.
@@ -11,9 +13,8 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 LECTURES = [
-    {"id": "stim2", "stim": 2, "title": "How modern light bulbs work", "video": "", "length_s": 143, "youtube": "oCEKMEeZXug"},
-    {"id": "stim5", "stim": 5, "title": "Why do we have more boys than girls", "video": "", "length_s": 154, "youtube": "3IaYhG11ckA"},
-    {"id": "stim1", "stim": 1, "title": "Why are stars star-shaped", "video": "", "length_s": 209, "youtube": "VVAKFJ8VVp4"},
+    {"id": "stim2", "stim": 2, "title": "How modern light bulbs work", "video": "/media/stim2.mp4", "length_s": 143, "youtube": "oCEKMEeZXug"},
+    {"id": "stim5", "stim": 5, "title": "Why do we have more boys than girls", "video": "/media/stim5.mp4", "length_s": 154, "youtube": "3IaYhG11ckA"},
 ]
 
 _POOLS = {

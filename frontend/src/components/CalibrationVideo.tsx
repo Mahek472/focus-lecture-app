@@ -23,8 +23,20 @@ function youtubeId(url: string): string | null {
 
 type Source = { kind: "file"; url: string; name: string } | { kind: "youtube"; id: string } | null;
 
+// Local filler clip (BBBD stim1, not one of the session lectures), loaded by default so calibration
+// needs no picking or network; another file or link can still replace it.
+const DEFAULT_CLIP = "/media/calibration.mp4";
+
 export const CalibrationVideo = forwardRef<CalibrationVideoHandle, { overlay?: ReactNode }>(function CalibrationVideo({ overlay }, ref) {
   const [src, setSrc] = useState<Source>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(DEFAULT_CLIP, { method: "HEAD" }).then((r) => {
+      if (live && r.ok && (r.headers.get("content-type") ?? "").startsWith("video/"))
+        setSrc((s) => s ?? { kind: "file", url: DEFAULT_CLIP, name: "Why are stars star-shaped (BBBD)" });
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const [link, setLink] = useState("");
   const [linkError, setLinkError] = useState("");
   const [ytPlay, setYtPlay] = useState(false);
@@ -33,7 +45,7 @@ export const CalibrationVideo = forwardRef<CalibrationVideoHandle, { overlay?: R
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Release the object URL when the file changes or the screen closes.
-  useEffect(() => () => { if (src?.kind === "file") URL.revokeObjectURL(src.url); }, [src]);
+  useEffect(() => () => { if (src?.kind === "file" && src.url.startsWith("blob:")) URL.revokeObjectURL(src.url); }, [src]);
 
   useImperativeHandle(ref, () => ({
     play() {

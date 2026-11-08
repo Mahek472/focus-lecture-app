@@ -230,14 +230,29 @@ export interface Participant {
   notes: string;
 }
 
+/** One webcam reading per second of video, recorded by the UI. Not in contract. */
+export interface CameraSample {
+  t_video: number;
+  state: CameraMessage["state"];
+  blink_rate: number | null;
+}
+
+/** An intervention the backend raised, and how the participant answered it. */
+export interface InterventionLog {
+  t_video: number;
+  action: InterventionEvent["action"];
+  choice?: InterventionResponse["choice"];
+}
+
 /** Everything recorded for one run, used by recap/review and export. */
 export interface RunHistory {
   run_id: string;
   focus: FocusUpdate[];
   bands: BandPowerUpdate[];
-  camera?: { t: number; state: CameraMessage["state"] }[];   // webcam state, one per second
   lapses: Lapse[];
   markers: Marker[];
+  camera?: CameraSample[];
+  interventions?: InterventionLog[];
   eeg?: { sfreq: number; channels: ChannelName[]; data: Float32Array[]; t0: number }; // t0 = video time of sample 0
 }
 

@@ -2,7 +2,7 @@
 // so the review screen and the exports work for any data source.
 
 import type { DataSource, Unsubscribe } from "./DataSource";
-import type { BandPowerUpdate, CameraMessage, FocusUpdate, Lapse, Marker, RunHistory, TranscriptLine } from "./types";
+import type { BandPowerUpdate, CameraSample, FocusUpdate, InterventionLog, InterventionResponse, Lapse, Marker, RunHistory, TranscriptLine } from "./types";
 import { snippetFor } from "./mock/MockSource";
 
 class GrowingSeries {
@@ -24,8 +24,9 @@ interface Recording {
   lapses: Lapse[];
   openLapse: number | null;
   openReason?: string;
-  camera: { t: number; state: CameraMessage["state"] }[];
   markers: Marker[];
+  camera: CameraSample[];        // one webcam reading per video second (a rewind replaces those seconds)
+  interventions: InterventionLog[];
   eeg: GrowingSeries[];
   eegChannels: string[];
   sfreq: number;
@@ -41,7 +42,7 @@ export class RunRecorder {
 
   attach(source: DataSource, runId: string, transcript: TranscriptLine[]) {
     this.detach();
-    const rec: Recording = this.recs.get(runId) ?? { focus: [], bands: [], lapses: [], openLapse: null, camera: [], markers: [],
+    const rec: Recording = this.recs.get(runId) ?? { focus: [], bands: [], lapses: [], openLapse: null, markers: [], camera: [], interventions: [],
       eeg: [], eegChannels: [], sfreq: 125, t0: null, transcript };
     rec.transcript = transcript;
     this.recs.set(runId, rec);
@@ -60,6 +61,7 @@ export class RunRecorder {
           rec.openLapse = null; this.notify();
         }
       }),
+      source.on("intervention", (m) => { rec.interventions.push({ t_video: m.t_video, action: m.action }); this.notify(); }),
       source.on("eeg", (m) => {
         if (!rec.eeg.length) { rec.eegChannels = m.channels; rec.sfreq = m.sfreq; rec.eeg = m.channels.map(() => new GrowingSeries()); }
         if (rec.t0 === null) rec.t0 = this.videoT;
@@ -79,12 +81,23 @@ export class RunRecorder {
     return m;
   }
 
-  /** Webcam state each second (the UI computes it; Watch calls this when it sends the camera message). */
-  addCamera(runId: string, t: number, state: CameraMessage["state"]) {
+  /** Webcam state for the current video second (sent to the backend too, but not echoed back). */
+  recordCamera(runId: string, sample: CameraSample) {
     const rec = this.recs.get(runId);
     if (!rec) return;
-    const last = rec.camera.at(-1);
-    if (last && Math.round(last.t) === Math.round(t)) last.state = state; else rec.camera.push({ t, state });
+    const sec = Math.round(sample.t_video);
+    rec.camera = rec.camera.filter((x) => Math.round(x.t_video) !== sec);
+    const i = rec.camera.findIndex((x) => x.t_video > sample.t_video);
+    if (i < 0) rec.camera.push(sample); else rec.camera.splice(i, 0, sample);
+  }
+
+  /** How the participant answered the most recent unanswered intervention. */
+  recordResponse(runId: string, choice: InterventionResponse["choice"], t_video: number) {
+    const rec = this.recs.get(runId);
+    if (!rec) return;
+    const open = [...rec.interventions].reverse().find((x) => !x.choice && Math.abs(x.t_video - t_video) < 30);
+    if (open) open.choice = choice; else rec.interventions.push({ t_video, action: "alert", choice });
+    this.notify();
   }
 
   /** "I was focused": mark the lapse around t as dismissed (the backend drops it from the recap). */
@@ -99,8 +112,14 @@ export class RunRecorder {
   get(runId: string): RunHistory | null {
     const rec = this.recs.get(runId);
     if (!rec) return null;
+    // a lapse still open when the run ended counts up to the last focus reading
+    const lastT = rec.focus.at(-1)?.t_video ?? rec.openLapse;
+    const lapses = rec.openLapse !== null && lastT !== null && lastT > rec.openLapse
+      ? [...rec.lapses, { start: rec.openLapse, end: lastT, snippet: snippetFor(rec.transcript, rec.openLapse, lastT), reason: rec.openReason }]
+      : rec.lapses;
     return {
-      run_id: runId, focus: rec.focus, bands: rec.bands, camera: rec.camera, lapses: rec.lapses, markers: rec.markers,
+      run_id: runId, focus: rec.focus, bands: rec.bands, lapses, markers: rec.markers,
+      camera: rec.camera, interventions: rec.interventions,
       eeg: rec.eeg.length ? { sfreq: rec.sfreq, channels: rec.eegChannels, data: rec.eeg.map((s) => s.view()), t0: rec.t0 ?? 0 } : undefined,
     };
   }

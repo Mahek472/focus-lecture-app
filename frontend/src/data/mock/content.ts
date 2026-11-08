@@ -5,9 +5,8 @@
 import type { Lecture, Participant, SessionSummary, TranscriptLine } from "../types";
 
 export const LECTURES: Lecture[] = [
-  { id: "stim2", title: "How modern light bulbs work", video: "", length_s: 143, youtube: "oCEKMEeZXug" },
-  { id: "stim5", title: "Why do we have more boys than girls", video: "", length_s: 154, youtube: "3IaYhG11ckA" },
-  { id: "stim1", title: "Why are stars star-shaped", video: "", length_s: 209, youtube: "VVAKFJ8VVp4" },
+  { id: "stim2", title: "How modern light bulbs work", video: "/media/stim2.mp4", length_s: 143, youtube: "oCEKMEeZXug" },
+  { id: "stim5", title: "Why do we have more boys than girls", video: "/media/stim5.mp4", length_s: 154, youtube: "3IaYhG11ckA" },
 ];
 
 const POOLS: Record<string, string[]> = {
@@ -68,6 +67,6 @@ export const PARTICIPANTS: Participant[] = [
 
 export const PAST_SESSIONS: SessionSummary[] = [
   { run_id: "demo-replay-1", lecture_id: "stim2", lecture_title: "How modern light bulbs work", participant_id: "P01", date: "2026-11-07T15:10:00", duration_s: 143, mode: "replay", status: "complete", focused_fraction: 0.71 },
-  { run_id: "demo-live-1", lecture_id: "stim1", lecture_title: "Why are stars star-shaped", participant_id: "P01", date: "2026-11-07T17:40:00", duration_s: 209, mode: "live", status: "complete", focused_fraction: 0.82 },
+  { run_id: "demo-live-1", lecture_id: "stim5", lecture_title: "Why do we have more boys than girls", participant_id: "P01", date: "2026-11-07T17:40:00", duration_s: 154, mode: "live", status: "complete", focused_fraction: 0.82 },
   { run_id: "scheduled-1", lecture_id: "stim5", lecture_title: "Why do we have more boys than girls", participant_id: "P02", date: "2026-11-08T10:00:00", duration_s: 0, mode: "live", status: "scheduled" },
 ];
