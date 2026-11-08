@@ -43,7 +43,7 @@ Keep our layout. It scores slightly higher, T7 and T8 sit over the jaw muscles, 
 
 [scripts/headset_session.py](scripts/headset_session.py) wraps the Tang recipe as [scripts/focus_model.py](scripts/focus_model.py), so the backend can import the same model.
 
-1. **Place electrodes:** Fp1, Fz, Cz, Pz, P3, P4, O1, O2 go on board channels 1–8 in that order (if the wiring differs, pass `--channels`). The ear-clip ground goes on RLD/COMM.
+1. **Place electrodes:** P3, Fz, Cz, Fp1, P4, Pz, O1, O2 go on board channels 1–8 in that order (if the wiring differs, pass `--channels`). The ear-clip ground goes on RLD/COMM.
 2. **Check signal:** verify the signal in the EXG Visualizer, then **close the visualizer** (only one program can use the port).
 3. **Run the check:** `python scripts/headset_session.py check --port COM3`. It walks through rest, blinks, jaw clench, eyes closed and eyes open, then prints a per-channel verdict, the blink size on Fp1 and the eyes-closed alpha ratio.
 4. **Record:** `python scripts/headset_session.py record --port COM3 --name mahek1`. This runs 10 one-minute blocks that alternate WATCH (a lecture clip) and COUNT BACK BY 7 (BBBD's distractor). The script sends the channel-on and RLD commands itself, using NeuroPawn's own tutorial pattern.

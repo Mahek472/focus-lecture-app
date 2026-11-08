@@ -3,13 +3,15 @@
 Writes recordings/<participant>_quiz.html: pre-test, memory quiz, then an answer key on its
 own page. Open in a browser and print (Ctrl+P); the key starts on a new page.
 
-Usage: python experiment/print_quiz.py --participant P01 [--videos 1,2,3,4,5]
+Usage: python experiment/print_quiz.py --participant P01 [--videos 1,2,3,4,5] [--session s2]
+Print it BEFORE the run: like `run`, it picks the next free session (s2, s3, ...) when the
+participant already has a recording, so the printed order matches the run.
 """
 import argparse
 import html
 import os
 
-from run_experiment import REC_DIR, build_session
+from run_experiment import REC_DIR, build_session, next_free_session, run_tag
 
 
 def section(title, blocks, number_from=1):
@@ -37,8 +39,10 @@ def main():
     ap.add_argument("--participant", required=True)
     ap.add_argument("--videos", default="1,2,5")  # keep in sync with run_experiment.py
     ap.add_argument("--quiz", choices=["end", "after-each"], default="end")
+    ap.add_argument("--session")
     a = ap.parse_args()
-    s = build_session(a.participant, a.quiz, [int(v) for v in a.videos.split(",") if v])
+    tag = run_tag(a.participant, a.session or next_free_session(a.participant))
+    s = build_session(a.participant, a.quiz, [int(v) for v in a.videos.split(",") if v], seed_tag=tag)
     pre, _ = section("Part 1: General knowledge (before the videos)", s["domain_quiz"])
     mem, _ = section("Part 2: Questions about the videos", s["memory_quiz"])
     doc = f"""<!doctype html><html><head><meta charset="utf-8"><title>Quiz {html.escape(a.participant)}</title>
@@ -47,7 +51,7 @@ h1{{font-size:22px}} h2{{font-size:18px;margin-top:28px;border-bottom:1px solid 
 .q{{break-inside:avoid;margin:10px 0}} ul{{list-style:none;padding-left:18px;margin:4px 0}}
 li::before{{content:"\\2610  "}} table{{border-collapse:collapse}} td,th{{padding:2px 10px;border-bottom:1px solid #ddd;text-align:left}}
 .key{{break-before:page}}</style></head><body>
-<h1>Video study quiz &middot; participant {html.escape(a.participant)}</h1>
+<h1>Video study quiz &middot; participant {html.escape(tag)}</h1>
 <p>Mark one answer per question.</p>
 {pre}
 <p style="break-before:page"></p>
@@ -58,7 +62,7 @@ li::before{{content:"\\2610  "}} table{{border-collapse:collapse}} td,th{{paddin
 {key("Part 2: Video questions", s["memory_quiz"])}</div>
 </body></html>"""
     os.makedirs(REC_DIR, exist_ok=True)
-    path = f"{REC_DIR}/{a.participant}_quiz.html"
+    path = f"{REC_DIR}/{tag}_quiz.html"
     open(path, "w", encoding="utf-8").write(doc)
     print("wrote", path)
 

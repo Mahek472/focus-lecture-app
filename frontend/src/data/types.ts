@@ -193,6 +193,7 @@ export interface SignalCheckUpdate {
   hum?: number[];           // 60 Hz / 1-40 Hz power ratio (raw)
   alpha?: number[];         // 8-12 Hz share of 1-40 Hz
   dc?: number[];
+  error?: string;           // UI-side: why the checker isn't running (busy port, unplugged board)
 }
 
 export interface SerialPortInfo {

@@ -283,16 +283,20 @@ async function study() {
   await message("Welcome", "<p>In this study you will watch short educational videos and answer some questions.</p>" +
     "<p>Please sit comfortably and keep your head still while the videos play.</p>" +
     (camStream ? "<p>Your EEG and a webcam video of your face are recorded while each video plays.</p>" : ""));
-  await message("General knowledge", "<p>First, some general knowledge questions. It's fine to guess.</p>");
-  await quiz(S.domain_quiz, "domain");
+  const nQ = (blocks) => blocks.reduce((a, b) => a + b.questions.length, 0);  // custom lectures have no quiz
+  if (nQ(S.domain_quiz)) {
+    await message("General knowledge", "<p>First, some general knowledge questions. It's fine to guess.</p>");
+    await quiz(S.domain_quiz, "domain");
+  }
   await message("Watching the videos", "<p>You will now watch the videos. Watch them normally, as you would at home, " +
     "while being relaxed and sitting still.</p><p>Each video starts after a short black screen and a flash.</p>", "Start");
   for (const stim of S.attentive_order) {
     await playVideo(stim, 1);
     await ratings(stim);
-    if (S.quiz_mode === "after-each") await quiz(S.memory_quiz.filter(b => b.stim === stim), "memory");
+    const own = S.memory_quiz.filter(b => b.stim === stim);
+    if (S.quiz_mode === "after-each" && nQ(own)) await quiz(own, "memory");
   }
-  if (S.quiz_mode === "end") {
+  if (S.quiz_mode === "end" && nQ(S.memory_quiz)) {
     await message("Questions about the videos", "<p>Now some questions about the videos you just watched.</p>");
     await quiz(S.memory_quiz, "memory");
   }

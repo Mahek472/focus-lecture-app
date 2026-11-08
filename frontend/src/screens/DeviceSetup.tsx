@@ -36,9 +36,9 @@ export function DeviceSetup() {
   const [steps, setSteps] = useState<Record<StepId, "todo" | "running" | "seen" | "missed">>({ blink: "todo", clench: "todo", eyes: "todo" });
   const stepRef = useRef<{ id: StepId; base: SignalCheckUpdate; until: number } | null>(null);
 
-  useEffect(() => {
-    source.listPorts().then((p) => { setPorts(p); setPort(p.find((x) => /usb/i.test(x.description))?.port ?? p[0]?.port ?? ""); });
-  }, [source]);
+  const refreshPorts = () =>
+    source.listPorts().then((p) => { setPorts(p); setPort((cur) => (p.some((x) => x.port === cur) ? cur : p.find((x) => /usb/i.test(x.description))?.port ?? p[0]?.port ?? cur)); });
+  useEffect(() => { void refreshPorts(); }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!connected) return;
@@ -90,31 +90,30 @@ export function DeviceSetup() {
           <div className="panel__head"><h2 id="conn-h">Board connection</h2></div>
           <div className="panel__body" style={{ display: "grid", gap: 12 }}>
             <div className="notice notice--info">Close the NeuroPawn EXG Visualizer first. Only one program can use the board at a time.</div>
-            {ports.length ? (
-              <label className="field"><span>Serial port</span>
-                <select value={port} onChange={(e) => setPort(e.target.value)} disabled={connected}>
-                  {ports.map((p) => <option key={p.port} value={p.port}>{p.port}: {p.description}</option>)}
-                </select>
-              </label>
-            ) : (
-              <label className="field"><span>Serial port (usually "USB Serial Port (COMx)" in Device Manager)</span>
-                <input type="text" value={port} onChange={(e) => setPort(e.target.value.toUpperCase())} placeholder="COM7" disabled={connected} />
-              </label>
-            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              {ports.length ? (
+                <label className="field" style={{ flex: 1 }}><span>Serial port</span>
+                  <select value={port} onChange={(e) => setPort(e.target.value)} disabled={connected}>
+                    {ports.map((p) => <option key={p.port} value={p.port}>{p.port}: {p.description}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <label className="field" style={{ flex: 1 }}><span>Serial port (no ports found: plug in the board and refresh)</span>
+                  <input type="text" value={port} onChange={(e) => setPort(e.target.value.toUpperCase())} placeholder="COM7" disabled={connected} />
+                </label>
+              )}
+              <button className="btn" disabled={connected} onClick={refreshPorts}>Refresh</button>
+            </div>
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input type="checkbox" checked={rld} onChange={(e) => setRld(e.target.checked)} disabled={connected} />
               Route RLD on every channel
             </label>
-            {source.kind === "websocket" && (
-              <div className="small">
-                <p className="muted" style={{ marginBottom: 4 }}>Start the signal checker on the recording laptop:</p>
-                <code style={{ display: "block", whiteSpace: "pre-wrap" }}>python scripts/live_signal.py --port {port || "COM7"}{rld ? "" : " --no-rld"} --no-browser</code>
-              </div>
-            )}
             {!connected
               ? <button className="btn btn--primary" disabled={!port} onClick={() => setConnected(true)}>Connect board</button>
               : <button className="btn" onClick={() => { setConnected(false); setU({ ready: false }); }}>Disconnect</button>}
-            {connected && !u.ready && <p className="small muted">Waiting for data from {port}. If nothing arrives, check the port and that the checker is running.</p>}
+            {connected && !u.ready && !u.error && <p className="small muted">Connecting to {port} and switching on the channels. The first data takes about 20 seconds.</p>}
+            {connected && u.error && <div className="notice notice--warn"><Icon name="warn" />Couldn't read the board on {port}: {u.error}. Check the cable and that the EXG Visualizer is closed, then Disconnect and Connect again.</div>}
+            {source.kind === "websocket" && <p className="small muted">Disconnecting, or leaving this page, releases the board for recording.</p>}
           </div>
         </section>
 

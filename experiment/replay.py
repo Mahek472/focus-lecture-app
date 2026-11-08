@@ -6,7 +6,7 @@ Model scores are out-of-fold: every window is scored by a model that did not tra
 Focus = 1 - P(distracted); the label uses a 3-window (~6 s) moving average, as the app's
 5 s smoothing rule does; focus < 0.5 = "distracted".
 
-Usage: python experiment/replay.py --participant TEST     (runs `sync` first if needed)
+Usage: python experiment/replay.py --participant TEST [--session s2]     (runs `sync` first if needed)
 then it opens http://localhost:8767
 """
 import argparse
@@ -216,12 +216,13 @@ load(0); update();
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--participant", required=True)
+    ap.add_argument("--session", help="a repeat run, e.g. s2 (files <participant>_<session>_*)")
     ap.add_argument("--settle-s", type=float, default=2)
     ap.add_argument("--blink-uv", type=float, default=150)
     ap.add_argument("--http-port", type=int, default=8767)
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    data = build(a.participant, a.settle_s, a.blink_uv)
+    data = build(f"{a.participant}_{a.session}" if a.session else a.participant, a.settle_s, a.blink_uv)
     for c in data["clips"]:
         print(f"{c['clip']:20s} truth {'distracted' if c['truth_distracted'] else 'attentive':10s} "
               f"windows correct {c['accuracy']:.0%}  (webcam starts {c['offset_s']:+.1f} s from video start)")

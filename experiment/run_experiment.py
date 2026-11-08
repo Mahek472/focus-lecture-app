@@ -22,8 +22,15 @@ same page clock as the markers. `sync` maps frames to EEG samples with the start
 marker pair (BBBD's two-point linear transform) and checks that the flash, which lights
 the face, shows up in the video at the marker time (BBBD validated with a StimTracker).
 
+Repeat runs: a second run for the same participant never overwrites the first. It saves as
+<participant>_s2 (then s3, ...), or under --session NAME, with its own video order and primes.
+A lecture outside BBBD: --youtube ID --title "..." (or --video-file media/x.mp4); it has no quiz.
+
 Usage
   python experiment/run_experiment.py run --participant P01 --board knight --port COM3
+  python experiment/run_experiment.py run --participant P01 --port COM7 --videos 3,4        # another lecture, saved as P01_s2
+  python experiment/run_experiment.py run --participant P01 --port COM7 --youtube <id> --title "My lecture"
+  python experiment/run_experiment.py evaluate --participant P01 --sessions all             # all of P01's runs together
   python experiment/run_experiment.py run --participant TEST --no-eeg          # rehearse the flow
   python experiment/run_experiment.py evaluate --participant P01
   python experiment/run_experiment.py sync --participant P01                   # webcam frames -> EEG samples
@@ -64,11 +71,45 @@ def shuffle_question(q, rng):
             "correct": order.index(q["correct"]), "source_order": order}
 
 
-def build_session(participant, quiz_mode, videos_subset, camera=True):
-    rng = random.Random(f"bbbd-exp2-{participant}")
+CUSTOM_STIM = 9  # a lecture outside BBBD's five (marker codes 19 / 29); it has no quiz
+
+
+def run_tag(participant, session=None):
+    """File prefix: <participant> for the first run (unchanged), <participant>_<session> for later runs."""
+    return f"{participant}_{session}" if session else participant
+
+
+def run_exists(tag):
+    return any(os.path.exists(p) for p in (f"{REC_DIR}/{tag}_exp2.npz", f"{REC_DIR}/{tag}_exp2_session.json", f"{REC_DIR}/{tag}_cam"))
+
+
+def participant_tags(participant):
+    """All runs on disk for a participant: the first run, then _s2, _s3, ... (and any other named sessions)."""
+    tags = [participant] if run_exists(participant) else []
+    if os.path.isdir(REC_DIR):
+        for f in sorted(os.listdir(REC_DIR)):
+            m = re.match(rf"^{re.escape(participant)}_(.+)_exp2_session\.json$", f)
+            if m:
+                tags.append(f"{participant}_{m.group(1)}")
+    return tags
+
+
+def next_free_session(participant):
+    if not run_exists(participant):
+        return None
+    k = 2
+    while run_exists(run_tag(participant, f"s{k}")):
+        k += 1
+    return f"s{k}"
+
+
+def build_session(participant, quiz_mode, videos_subset, camera=True, extra_videos=(), seed_tag=None):
+    # seeded by the run's file tag, so a second session gets its own order and primes
+    rng = random.Random(f"bbbd-exp2-{seed_tag or participant}")
     stimuli = json.load(open(os.path.join(HERE, "stimuli.json")))["videos"]
-    if videos_subset:
+    if videos_subset is not None:
         stimuli = [v for v in stimuli if v["stim"] in videos_subset]
+    stimuli = stimuli + list(extra_videos)
     order = stimuli[:]
     rng.shuffle(order)
     quiz = json.load(open(os.path.join(HERE, "quiz_exp2.json"), encoding="utf-8"))["questions"]
@@ -76,7 +117,7 @@ def build_session(participant, quiz_mode, videos_subset, camera=True):
     def block(qtype, stims):
         out = []
         for v in stims:
-            qs = [shuffle_question(q, rng) for q in quiz[qtype][str(v["stim"])]]
+            qs = [shuffle_question(q, rng) for q in quiz[qtype].get(str(v["stim"]), [])]  # custom lectures: no quiz
             rng.shuffle(qs)
             out.append({"stim": v["stim"], "title": v["title"], "questions": qs})
         return out
@@ -85,7 +126,7 @@ def build_session(participant, quiz_mode, videos_subset, camera=True):
     rng.shuffle(pre_order)
     mem_order = order[:]
     rng.shuffle(mem_order)
-    return {"participant": participant, "quiz_mode": quiz_mode,
+    return {"participant": participant, "run": seed_tag or participant, "quiz_mode": quiz_mode,
             "attentive_order": [v["stim"] for v in order],
             "distracted_order": [v["stim"] for v in order],  # BBBD: same order as attentive
             "videos": {v["stim"]: v for v in stimuli},
@@ -183,7 +224,7 @@ def make_handler(session, recorder, state, args):
             raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
             if self.path.startswith("/api/upload/"):  # webcam clip (.webm) or its frame times (.json)
                 fname = os.path.basename(self.path.split("/api/upload/")[1])
-                cam_dir = f"{REC_DIR}/{args.participant}_cam"
+                cam_dir = f"{REC_DIR}/{args.tag}_cam"
                 os.makedirs(cam_dir, exist_ok=True)
                 open(os.path.join(cam_dir, fname), "wb").write(raw)
                 print(f"saved {cam_dir}/{fname} ({len(raw) / 1e6:.1f} MB)", flush=True)
@@ -224,19 +265,33 @@ def save_session(session, state, recorder, args):
     os.makedirs(REC_DIR, exist_ok=True)
     out = {**session, "board": args.board, "channels": args.channels, "markers": recorder.markers_log,
            "events": state["events"], "answers": state["answers"], "scores": score(session, state["answers"])}
-    json.dump(out, open(f"{REC_DIR}/{args.participant}_exp2_session.json", "w", encoding="utf-8"), indent=1)
+    json.dump(out, open(f"{REC_DIR}/{args.tag}_exp2_session.json", "w", encoding="utf-8"), indent=1)
 
 
 def shutdown(recorder, args, state):
     time.sleep(0.5)
-    recorder.stop_and_save(f"{args.participant}_exp2", args.board)
+    recorder.stop_and_save(f"{args.tag}_exp2", args.board)
     print("session finished; Ctrl+C to quit (or it exits in 3 s)", flush=True)
     time.sleep(3)
     os._exit(0)
 
 
 def cmd_run(args):
-    session = build_session(args.participant, args.quiz, args.videos, camera=not args.no_camera)
+    # never overwrite an earlier run: a repeat for the same participant becomes session s2, s3, ...
+    if args.session is None:
+        args.session = next_free_session(args.participant)
+        if args.session:
+            print(f"{args.participant} already has a recording; keeping it. This run saves as {run_tag(args.participant, args.session)}.", flush=True)
+    args.tag = run_tag(args.participant, args.session)
+    if run_exists(args.tag):
+        sys.exit(f"{args.tag} already has recordings in {REC_DIR}/. Pick another --session name; nothing was overwritten.")
+    extra = []
+    if args.youtube or args.video_file:
+        extra.append({"stim": CUSTOM_STIM, "title": args.title or "Lecture", "channel": "", "youtube": args.youtube,
+                      "duration_s": args.length or 0, "file": args.video_file})
+    session = build_session(args.participant, args.quiz, args.videos, camera=not args.no_camera,
+                            extra_videos=extra, seed_tag=args.tag)
+    print(f"run {args.tag}: videos {[session['videos'][s]['title'] for s in session['attentive_order']]}", flush=True)
     print("attentive/distracted order:", session["attentive_order"], flush=True)
     recorder = Recorder("none" if args.no_eeg else args.board, args.port, args.gain, args.channels,
                         rld=not args.no_rld)
@@ -252,7 +307,7 @@ def cmd_run(args):
     except KeyboardInterrupt:
         print("\ninterrupted: saving what was recorded", flush=True)
         save_session(session, state, recorder, args)
-        recorder.stop_and_save(f"{args.participant}_exp2", args.board)
+        recorder.stop_and_save(f"{args.tag}_exp2", args.board)
 
 
 # ---------------------------------------------------------------- evaluate
@@ -263,24 +318,46 @@ def cmd_evaluate(args):
     from focus_model import FocusModel, clean, to_bands
     from preprocess import windows
 
-    name = f"{args.participant}_exp2"
-    data, d = load_rec(f"{REC_DIR}/{name}.npz")
-    sf, ch = float(d["sfreq"]), list(d["ch_names"])
-    x = clean(data, sf)
-    xb = to_bands(x, sf)
-    proto = FocusModel(ch, sf, blink_uv=args.blink_uv)
-    recs = []
-    for b in blocks_from_markers(d["markers"]):
-        cond, stim = divmod(b["code"], 10)
-        if cond not in (1, 2):
-            continue
-        s = b["start"] + int(args.settle_s * sf)
-        wb, _ = windows(xb[..., s:b["end"]], sf, proto.win_s)
-        w, _ = windows(x[:, s:b["end"]], sf, proto.win_s)
-        keep = proto.blink_mask(w)
-        recs.append({"stim": stim, "y": cond - 1, "Xb": wb[keep], "dropped": int((~keep).sum())})
-    stims = sorted({r["stim"] for r in recs})
-    print(f"{len(recs)} recordings ({len(stims)} videos x conditions); "
+    # which runs: --sessions all (every run of this participant), a comma list ("first" = the
+    # unsuffixed first run), or just the one named by --session
+    if args.sessions == "all":
+        tags = participant_tags(args.participant)
+    elif args.sessions:
+        tags = [run_tag(args.participant, None if s == "first" else s) for s in args.sessions.split(",")]
+    else:
+        tags = [args.tag]
+    tags = [t for t in tags if os.path.exists(f"{REC_DIR}/{t}_exp2.npz")]
+    if not tags:
+        sys.exit(f"no recordings found for {args.participant} in {REC_DIR}/")
+    name = f"{tags[0]}_exp2" if len(tags) == 1 else f"{args.participant}_combined_exp2"
+    recs, mem, ch, sf = [], {}, None, None
+    for tag in tags:
+        data, d = load_rec(f"{REC_DIR}/{tag}_exp2.npz")
+        sf, ch = float(d["sfreq"]), list(d["ch_names"])
+        x = clean(data, sf)
+        xb = to_bands(x, sf)
+        proto = FocusModel(ch, sf, blink_uv=args.blink_uv)
+        for b in blocks_from_markers(d["markers"]):
+            cond, stim = divmod(b["code"], 10)
+            if cond not in (1, 2):
+                continue
+            s = b["start"] + int(args.settle_s * sf)
+            wb, _ = windows(xb[..., s:b["end"]], sf, proto.win_s)
+            w, _ = windows(x[:, s:b["end"]], sf, proto.win_s)
+            keep = proto.blink_mask(w)
+            # a video is identified by run + stimulus, so the same lecture in two sessions stays separate
+            group = stim if len(tags) == 1 else f"{tag.removeprefix(args.participant).lstrip('_') or 'first'}:{stim}"
+            recs.append({"stim": group, "y": cond - 1, "Xb": wb[keep], "dropped": int((~keep).sum())})
+        sess_file = f"{REC_DIR}/{tag}_exp2_session.json"
+        if os.path.exists(sess_file):
+            for k, v in json.load(open(sess_file, encoding="utf-8")).get("scores", {}).get("memory", {}).items():
+                mem[k if len(tags) == 1 else f"{tag.removeprefix(args.participant).lstrip('_') or 'first'}:{k}"] = v
+    empty = [f"{('attentive', 'distracted')[r['y']]} {r['stim']}" for r in recs if not len(r["Xb"])]
+    if empty:
+        print(f"skipped (no usable 2 s windows after blink rejection): {', '.join(empty)}")
+    recs = [r for r in recs if len(r["Xb"])]
+    stims = sorted({r["stim"] for r in recs}, key=str)
+    print(f"runs: {', '.join(tags)}; {len(recs)} recordings ({len(stims)} videos x conditions); "
           f"{sum(r['dropped'] for r in recs)} blink windows dropped")
     stack = lambda rs: (np.concatenate([r["Xb"] for r in rs]),
                         np.concatenate([np.full(len(r["Xb"]), r["y"]) for r in rs]))
@@ -309,12 +386,10 @@ def cmd_evaluate(args):
             m = FocusModel(ch, sf).fit(Xtr, ytr)
             aucs[f"chunk{i + 1}"] = float(roc_auc_score(yte, m.p_distracted(Xte)))
             focus[f"chunk{i + 1}"] = {("attentive", "distracted")[r["y"]]: float(m.focus(r["Xb"]).mean()) for r in te}
-    sess = json.load(open(f"{REC_DIR}/{name}_session.json", encoding="utf-8"))
-    mem = sess.get("scores", {}).get("memory", {})
-    print("\nfold     AUC    focus(attentive)  focus(distracted)  memory quiz")
+    print("\nfold       AUC    focus(attentive)  focus(distracted)  memory quiz")
     for v in aucs:
-        q = mem.get(str(v)) or mem.get(v) or {}
-        print(f"  {str(v):6s} {aucs[v]:.3f}      {focus[v].get('attentive', np.nan):.2f}             "
+        q = mem.get(str(v)) or {}
+        print(f"  {str(v):8s} {aucs[v]:.3f}      {focus[v].get('attentive', np.nan):.2f}             "
               f"{focus[v].get('distracted', np.nan):.2f}            {q.get('correct', '-')}/{q.get('total', '-')}")
     mean = float(np.mean(list(aucs.values())))
     verdict = ("WORKS (>= 0.70)" if mean >= 0.70 else "BORDERLINE (0.60-0.70): check signal quality"
@@ -322,9 +397,75 @@ def cmd_evaluate(args):
     print(f"\n{method} AUC: {mean:.3f}  (BBBD, our 8 channels: 0.872)  ->  {verdict}")
     Xall = np.concatenate([r["Xb"] for r in recs]); yall = np.concatenate([np.full(len(r["Xb"]), r["y"]) for r in recs])
     FocusModel(ch, sf).fit(Xall, yall).save(f"{REC_DIR}/{name}_model.joblib")
-    json.dump({"participant": args.participant, "lovo_auc": aucs, "mean_auc": mean, "verdict": verdict, "focus": focus},
+    json.dump({"participant": args.participant, "runs": tags, "method": method, "lovo_auc": {str(k): v for k, v in aucs.items()},
+               "mean_auc": mean, "verdict": verdict, "focus": {str(k): v for k, v in focus.items()}},
               open(f"{REC_DIR}/{name}_result.json", "w"), indent=2)
     print(f"saved {REC_DIR}/{name}_model.joblib (all videos) and _result.json")
+
+
+# ---------------------------------------------------------------- score with an earlier model
+
+def cmd_score(args):
+    """Apply a saved calibrated model, unchanged, to another run: calibrate once, use on a new lecture."""
+    from sklearn.metrics import roc_auc_score
+    from focus_model import FocusModel, clean, to_bands
+    from preprocess import windows
+
+    model_tag = run_tag(args.participant, None if args.model_session in (None, "first") else args.model_session)
+    model_path = f"{REC_DIR}/{model_tag}_exp2_model.joblib"
+    if not os.path.exists(model_path):
+        sys.exit(f"no model at {model_path}: run evaluate on that run first")
+    if args.tag == model_tag:
+        sys.exit("the model and the test run are the same run; pass --session for the run to test")
+    model = FocusModel.load(model_path)
+    data, d = load_rec(f"{REC_DIR}/{args.tag}_exp2.npz")
+    sf, ch = float(d["sfreq"]), list(d["ch_names"])
+    if ch != model.ch_names:
+        sys.exit(f"channel order differs: model {model.ch_names} vs run {ch}")
+    x = clean(data, sf)
+    xb = to_bands(x, sf)
+    proto = FocusModel(ch, sf, blink_uv=args.blink_uv)
+    rows, ys, ps = [], [], []
+    for b in blocks_from_markers(d["markers"]):
+        cond, stim = divmod(b["code"], 10)
+        if cond not in (1, 2):
+            continue
+        s = b["start"] + int(args.settle_s * sf)
+        wb, _ = windows(xb[..., s:b["end"]], sf, proto.win_s)
+        w, _ = windows(x[:, s:b["end"]], sf, proto.win_s)
+        keep = proto.blink_mask(w)
+        if not keep.any():
+            continue
+        p = model.p_distracted(wb[keep])
+        ys.append(np.full(len(p), cond - 1)); ps.append(p)
+        # how the estimate evolves inside the block: mean focus per quarter
+        quarters = [float(1 - q.mean()) for q in np.array_split(p, 4) if len(q)]
+        rows.append((("attentive", "distracted")[cond - 1], stim, len(p), int((~keep).sum()), float(1 - p.mean()),
+                     float(np.mean(p < 0.5)), quarters))
+    y, p = np.concatenate(ys), np.concatenate(ps)
+    auc = float(roc_auc_score(y, p)) if len(set(y)) == 2 else float("nan")
+    print(f"model: {model_tag} (trained on that run)   test run: {args.tag}")
+    print("\ncondition    video  windows  blinks  mean focus  % called focused  focus by quarter")
+    for cond, stim, n, drop, f, called, qs in rows:
+        print(f"  {cond:10s}  {stim:>3}   {n:6d}  {drop:6d}     {f:.2f}        {called * 100:5.0f}%        "
+              + "  ".join(f"{q:.2f}" for q in qs))
+    caught = float(np.mean(p[y == 1] >= 0.5)) if (y == 1).any() else float("nan")
+    kept = float(np.mean(p[y == 0] < 0.5)) if (y == 0).any() else float("nan")
+    # AUC only checks the ordering; the app acts on the 0.5 threshold, so both must hold
+    if caught < 0.3 or kept < 0.3:
+        verdict = (f"NOT USABLE AS SAVED: ordering AUC {auc:.2f}, but only {caught:.0%} of counting and {kept:.0%} of watching "
+                   "land on the right side of 0.5 (signal level shifted between sessions; needs re-centering)")
+    else:
+        verdict = ("WORKS (>= 0.70)" if auc >= 0.70 else "BORDERLINE (0.60-0.70)" if auc >= 0.60 else "DOES NOT TRANSFER (< 0.60)")
+    print(f"\nAUC on the new lecture: {auc:.3f}; counting caught {caught:.0%}, watching kept {kept:.0%}")
+    print(f"-> {verdict}")
+    print("Reference: on BBBD, training on one video and testing on others averaged 0.80 (our 8 channels, 4 s), "
+          "0.75 with 2 s windows.")
+    out = f"{REC_DIR}/{args.tag}_scored_with_{model_tag}.json"
+    json.dump({"model": model_tag, "test_run": args.tag, "auc": auc, "counting_caught": caught, "watching_kept": kept, "verdict": verdict,
+               "blocks": [dict(condition=c, video=s, windows=n, blink_dropped=dr, mean_focus=f, called_focused=cf, quarters=q)
+                          for c, s, n, dr, f, cf, q in rows]}, open(out, "w"), indent=2)
+    print(f"saved {out}")
 
 
 # ---------------------------------------------------------------- webcam sync
@@ -364,7 +505,7 @@ def cmd_sync(args):
     BBBD used to put its devices on one timeline. The flash, visible on the face, measures any
     residual webcam offset; with both flashes found, frame times are shifted by their mean.
     """
-    name = f"{args.participant}_exp2"
+    name = f"{args.tag}_exp2"
     sess = json.load(open(f"{REC_DIR}/{name}_session.json", encoding="utf-8"))
     log = [m for m in sess["markers"] if m.get("t_client_ms") is not None]
     eeg, sf = None, None
@@ -372,7 +513,7 @@ def cmd_sync(args):
         d = np.load(f"{REC_DIR}/{name}.npz")
         idx = np.flatnonzero(d["markers"])
         eeg, sf = list(zip(d["markers"][idx].astype(int), idx)), float(d["sfreq"])  # (code, sample)
-    cam_dir = f"{REC_DIR}/{args.participant}_cam"
+    cam_dir = f"{REC_DIR}/{args.tag}_cam"
     print("clip                 frames   fps  start flash  end flash  correction  EEG Hz from markers")
     for i, m in enumerate(log):
         if m["code"] == END or i + 1 >= len(log):
@@ -408,7 +549,7 @@ def cmd_sync(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["run", "evaluate", "sync"])
+    ap.add_argument("cmd", choices=["run", "evaluate", "score", "sync"])
     ap.add_argument("--participant", required=True)
     ap.add_argument("--board", choices=["knight", "knight-imu", "synthetic"], default="knight")
     ap.add_argument("--port")
@@ -418,16 +559,28 @@ def main():
     ap.add_argument("--no-camera", action="store_true", help="don't record the webcam")
     ap.add_argument("--no-rld", action="store_true", help="leave Route RLD off (as in the EXG Visualizer default)")
     ap.add_argument("--quiz", choices=["end", "after-each"], default="end")
-    ap.add_argument("--videos", default="1,2,5",
-                    help="stim numbers to show; default = the 3 shortest (~8.5 min per pass); 1,2,3,4,5 = full BBBD")
+    ap.add_argument("--videos", default=None,
+                    help="BBBD stim numbers to show; default 1,2,5 (the 3 shortest), or none when --youtube/--video-file is given; "
+                         "1,2,3,4,5 = full BBBD")
+    ap.add_argument("--session", help="name for a repeat run of the same participant (files <participant>_<session>_*); "
+                                      "run picks s2, s3, ... automatically if the participant already has data")
+    ap.add_argument("--model-session", help="score: the run whose saved model to use (default: first)")
+    ap.add_argument("--sessions", help="evaluate: 'all' runs of the participant, or a comma list such as first,s2")
+    ap.add_argument("--youtube", help="a lecture outside BBBD: YouTube video id (no quiz for it)")
+    ap.add_argument("--video-file", help="a lecture outside BBBD: file in experiment/static/media/, e.g. media/lecture.mp4")
+    ap.add_argument("--title", help="title of that lecture")
+    ap.add_argument("--length", type=int, help="its length in seconds (optional)")
     ap.add_argument("--http-port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--settle-s", type=float, default=2)
     ap.add_argument("--blink-uv", type=float, default=150)
     a = ap.parse_args()
     a.channels = a.channels.split(",")
+    if a.videos is None:
+        a.videos = "" if (a.youtube or a.video_file) else "1,2,5"
     a.videos = [int(v) for v in a.videos.split(",") if v]
-    {"run": cmd_run, "evaluate": cmd_evaluate, "sync": cmd_sync}[a.cmd](a)
+    a.tag = run_tag(a.participant, a.session)
+    {"run": cmd_run, "evaluate": cmd_evaluate, "score": cmd_score, "sync": cmd_sync}[a.cmd](a)
 
 
 if __name__ == "__main__":

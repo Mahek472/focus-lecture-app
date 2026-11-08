@@ -139,22 +139,33 @@ export class WebSocketSource implements DataSource {
   }
 
   // ---------------------------------------------------------------- device setup
-  /** No port-listing endpoint exists; the UI asks the operator to type the port. */
-  async listPorts(): Promise<SerialPortInfo[]> { return []; }
+  /** Serial ports from the dev server's device agent (vite.config.ts); empty if it isn't there. */
+  async listPorts(): Promise<SerialPortInfo[]> {
+    try { const r = await fetch("/agent/ports"); return r.ok ? ((await r.json()) as SerialPortInfo[]) : []; } catch { return []; }
+  }
 
-  /** Polls scripts/live_signal.py (started by the operator with the shown command). */
-  startSignalCheck(_port: string, _routeRld: boolean, handler: (u: SignalCheckUpdate) => void): Unsubscribe {
+  /** Starts scripts/live_signal.py through the device agent, polls it, and stops it on unsubscribe. */
+  startSignalCheck(port: string, routeRld: boolean, handler: (u: SignalCheckUpdate) => void): Unsubscribe {
     let stop = false;
     const poll = async () => {
+      try {
+        await fetch("/agent/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ port, rld: routeRld }) });
+      } catch { /* no agent (e.g. production build): fall back to a checker started by hand */ }
+      let n = 0;
       while (!stop) {
         try {
           const r = await fetch("/signal/data");
-          handler(r.ok ? ((await r.json()) as SignalCheckUpdate) : { ready: false });
+          if (r.ok) handler((await r.json()) as SignalCheckUpdate);
+          else if (n++ % 4 === 0) {   // not serving yet: check whether the checker died (busy port, unplugged board)
+            const st = await fetch("/agent/status").then((x) => (x.ok ? x.json() : null)).catch(() => null);
+            const failed = st && !st.running && st.exitCode !== null;
+            handler({ ready: false, error: failed ? (st.log.filter((l: string) => /error|unable|denied|exist/i.test(l)).at(-1) ?? `Signal checker stopped (exit ${st.exitCode})`) : undefined });
+          }
         } catch { handler({ ready: false }); }
         await new Promise((res) => setTimeout(res, 250));
       }
     };
     void poll();
-    return () => { stop = true; };
+    return () => { stop = true; void fetch("/agent/stop", { method: "POST" }).catch(() => {}); };
   }
 }

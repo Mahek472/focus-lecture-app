@@ -55,7 +55,7 @@ Expected accuracy is within about one webcam frame (33 ms at 30 fps). The EEG is
 **Roles:** an experimenter at the laptop (Mahek), someone handling electrodes and checking the signal (Eric), and the participant.
 
 1. **Room setup.** Use a quiet room with the participant facing the screen at about 60 cm. Speakers or headphones should be on with the volume up, since the beep marks each video. Phones go on silent and out of sight.
-2. **Electrodes.** Place Fp1, Fz, Cz, Pz, P3, P4, O1, O2 on board channels 1–8 in that order, with the ear-clip ground on RLD/COMM. Add conductive paste on each recording electrode.
+2. **Electrodes.** Place P3, Fz, Cz, Fp1, P4, Pz, O1, O2 on board channels 1–8 in that order, with the ear-clip ground on RLD/COMM. Add conductive paste on each recording electrode.
 3. **Visualizer check.** Open the EXG Visualizer, turn on each channel, and confirm a signal on all 8. Then **close the visualizer**, because only one program can use the board at a time. Note the COM port it used.
 4. **Quick signal check (1 min).**
    ```
@@ -99,6 +99,25 @@ Expected accuracy is within about one webcam frame (33 ms at 30 fps). The EEG is
    - the EEG rate implied by the two markers, which should match 125 Hz
 
    It also writes `recordings/P01_cam/<clip>_frames.csv`, mapping each frame to its time from video start and its EEG sample. **Good sync:** the start and end flash offsets agree within about 33 ms. A "-" means the flash wasn't visible on camera (face out of frame or room too bright), so no correction was applied for that clip.
+
+## Running the same participant again on another lecture
+
+A second run never overwrites the first. If the participant already has a recording, `run` saves the new one as `<ID>_s2` (then `_s3`, ...) and prints that name. Each session gets its own video order, starting numbers and quiz shuffle.
+
+1. **Pick the lecture.**
+   - The BBBD videos not used yet are 3 (Immune system, 7:49) and 4 (Who invented the internet, 6:33). These keep the quiz.
+   - Any other lecture: use `--youtube <video id> --title "..."`, or `--video-file media/lecture.mp4` for a file in `experiment/static/media/`. There is no quiz for these, so the quiz screens are skipped.
+2. **Print the quiz, if the lecture has one:** `.venv\Scripts\python experiment\print_quiz.py --participant P01 --videos 3,4`. It writes `recordings/P01_s2_quiz.html`, matching the order the run will use.
+3. **Run the session:**
+   ```
+   .venv\Scripts\python experiment\run_experiment.py run --participant P01 --port COM7 --videos 3,4
+   .venv\Scripts\python experiment\run_experiment.py run --participant P01 --port COM7 --youtube <video id> --title "My lecture"
+   ```
+   To choose the name yourself, add `--session lecture2`. A name that already exists is refused, and nothing is overwritten.
+4. **Score it:**
+   - **This run alone:** `evaluate --participant P01 --session s2`.
+   - **All of P01's runs together (better):** `evaluate --participant P01 --sessions all`. It holds out one lecture at a time across sessions, so even two single-lecture runs give a real leave-one-lecture-out score. It saves `recordings/P01_combined_exp2_model.joblib`.
+5. **Sync and replay:** use the same `--session s2` with `sync` and `experiment\replay.py`.
 
 ## Options
 
