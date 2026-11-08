@@ -1,0 +1,13 @@
+# feasibility pipeline, headset tools, experiment
+numpy
+scipy
+scikit-learn
+pyriemann
+mne
+pandas
+requests
+remotezip
+brainflow
+joblib
+opencv-python-headless
+# CBraMod probe / fine-tune only (GPU notebook): torch, braindecode==2.0.0, huggingface_hub, safetensors

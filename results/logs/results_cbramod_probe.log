@@ -1,0 +1,14 @@
+extracting CBraMod features for (17724, 8, 800) on cpu
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+  0/17724
+  2560/17724
+  5120/17724
+  7680/17724
+  10240/17724
+  12800/17724
+  15360/17724
+features (17724, 1600)
+calibrated LOVO: {'mean': 0.6842129111407605, 'sd': 0.07214468603894425, 'n': 29, 'frac_ge_070': 0.4482758620689655, 'frac_lt_060': 0.20689655172413793}
+new person: {'mean': 0.5640404731247325, 'folds': [0.546485754824538, 0.5543641572738089, 0.5912715072758504]}
+
+GATE 2: STOP: probe 0.684 vs Riemannian 0.872 (gap -0.188); Riemannian wins

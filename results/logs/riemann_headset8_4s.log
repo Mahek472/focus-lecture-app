@@ -1,0 +1,11 @@
+30 participants, 17724 windows of 4 s, channels [np.str_('P3'), np.str_('Fz'), np.str_('Cz'), np.str_('Fp1'), np.str_('P4'), np.str_('P7'), np.str_('O1'), np.str_('O2')]
+alpha check (distracted - attentive, log power): {'mean_log_alpha_diff': 0.11463769525289536, 'frac_subjects_higher_when_distracted': 0.7666666666666667, 't': 3.0260162353515625, 'p': 0.005152998026460409}
+calibrated LOVO: {'mean': 0.8752829852785089, 'sd': 0.07117733229884494, 'n': 29, 'frac_ge_070': 0.9655172413793104, 'frac_lt_060': 0.0}
+calibrated 1-video: {'mean': 0.8045020630050598, 'sd': 0.08059365315813415, 'n': 29, 'frac_ge_070': 0.896551724137931, 'frac_lt_060': 0.0}
+calibrated LOVO per band: {'delta': 0.735, 'theta': 0.747, 'alpha': 0.78, 'beta': 0.837}
+null (labels swapped per video): {'mean': 0.4410954586857057, 'sd': 0.15416655361867354, 'n': 30, 'frac_ge_070': 0.03333333333333333, 'frac_lt_060': 0.8}
+new person, 3 grouped folds {'mean': 0.6122326469021968, 'folds': [0.5976130145565745, 0.5673624482820443, 0.6717224778679719], 'per_sub_mean': 0.6679179008803026}
+new person, 3 grouped folds + re-centering {'mean': 0.6932849512708681, 'folds': [0.6951179374161498, 0.6399288230541592, 0.7448080933422953], 'per_sub_mean': 0.6931077479836815}
+
+GATE 1: GO (calibrated AUC >= 0.70)
+saved results/riemann_exp2_headset8_4s.json

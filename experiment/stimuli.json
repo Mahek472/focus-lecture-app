@@ -1,0 +1,11 @@
+{
+  "source": "BBBD Experiment 2, Table 2 of Madsen, Kuppa & Parra (bioRxiv 2025.04.29.651259)",
+  "file_note": "Leave file null to play the YouTube embed. To play a local copy instead, put it in experiment/static/media/ and set file to e.g. \"media/stim1.mp4\".",
+  "videos": [
+    {"stim": 1, "title": "Why are Stars Star-Shaped", "channel": "minutephysics", "youtube": "VVAKFJ8VVp4", "duration_s": 209, "file": null},
+    {"stim": 2, "title": "How Modern Light Bulbs Work", "channel": "minutephysics", "youtube": "oCEKMEeZXug", "duration_s": 143, "file": null},
+    {"stim": 3, "title": "The Immune System Explained - Bacteria", "channel": "Kurzgesagt - In a Nutshell", "youtube": "zQGOcOUBi6s", "duration_s": 469, "file": null},
+    {"stim": 4, "title": "Who Invented the Internet - And Why", "channel": "Kurzgesagt - In a Nutshell", "youtube": "21eFwbb48sE", "duration_s": 393, "file": null},
+    {"stim": 5, "title": "Why Do We Have More Boys Than Girls", "channel": "MinuteEarth", "youtube": "3IaYhG11ckA", "duration_s": 154, "file": null}
+  ]
+}
