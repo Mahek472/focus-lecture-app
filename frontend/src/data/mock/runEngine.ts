@@ -178,7 +178,7 @@ export class RunEngine {
       if (this.below >= this.rules.start_for_s || override) {
         this.inLapse = true; this.lapseSecs = 0; this.above = 0;
         this.lapseStart = Math.max(0, t - (override ? this.rules.camera_override_s : this.rules.start_for_s));
-        out.push({ type: "lapse_start", t_video: this.lapseStart });
+        out.push({ type: "lapse_start", t_video: this.lapseStart, reason: override ? `camera: ${this.camera().reason ?? "away"}` : "eeg" });
       }
     } else {
       this.lapseSecs++;

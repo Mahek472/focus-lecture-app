@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { Marker } from "../data/types";
 import type { FocusPoint } from "../lib/uncertainty";
-import { cssVar, fmtTime } from "../lib/format";
+import { cssVar, fmtTime, lapseReason } from "../lib/format";
 import { useCanvas, useThemeVersion } from "../lib/useCanvas";
 
 export interface FocusTimelineHandle { toImage(title: string): HTMLCanvasElement }
@@ -10,7 +10,7 @@ interface Props {
   points: FocusPoint[];
   duration: number;
   range?: [number, number];
-  lapses: { start: number; end: number }[];
+  lapses: { start: number; end: number; reason?: string; dismissed?: boolean }[];
   openLapseStart?: number | null;
   markers?: Marker[];
   thresholds: { start: number; end: number };
@@ -52,6 +52,12 @@ function draw(ctx: CanvasRenderingContext2D, o: Opts) {
   for (const l of lapses) {
     ctx.fillStyle = c.signalSoft; ctx.fillRect(X(l.start), T, Math.max(1, X(l.end) - X(l.start)), ph);
     ctx.fillStyle = c.signal; ctx.fillRect(X(l.start), T, Math.max(1, X(l.end) - X(l.start)), 3);
+    // why it was flagged ("EEG", "looked away", ...), when the region is wide enough to hold the label
+    const label = lapseReason(l.reason), wpx = X(l.end) - X(l.start);
+    if (label && !o.compact) {
+      const text = l.dismissed ? `${label}, dismissed` : label;
+      if (ctx.measureText(text).width + 8 < wpx) { ctx.fillStyle = c.text; ctx.textAlign = "left"; ctx.fillText(text, X(l.start) + 4, T + 12); }
+    }
   }
   // selection
   if (o.selection) { ctx.fillStyle = c.accentSoft; ctx.fillRect(X(o.selection[0]), T, X(o.selection[1]) - X(o.selection[0]), ph); }

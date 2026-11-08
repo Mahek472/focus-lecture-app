@@ -42,7 +42,8 @@ export class WebSocketSource implements DataSource {
   async listLectures() {
     const r = await http<Lecture[] | { lectures: Lecture[] }>("/sessions");
     const lectures = Array.isArray(r) ? r : r.lectures;
-    return lectures.map((l) => ({ ...l, video: l.video || `${API}/video?lecture_id=${encodeURIComponent(l.id)}` }));
+    // a lecture with a YouTube id plays the embed; only fall back to /video for lectures without one
+    return lectures.map((l) => ({ ...l, video: l.video || (l.youtube ? "" : `${API}/video?lecture_id=${encodeURIComponent(l.id)}`) }));
   }
   async getTranscript(lectureId: string) {
     const r = await http<TranscriptLine[] | { lines: TranscriptLine[] }>(`/transcript?lecture_id=${encodeURIComponent(lectureId)}`);

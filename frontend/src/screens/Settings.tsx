@@ -22,7 +22,7 @@ export function SettingsScreen() {
           <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <input type="radio" name="model" checked readOnly style={{ marginTop: 4 }} />
             <span><strong style={{ fontWeight: 500 }}>Per-user Riemannian classifier</strong> (Tang et al. 2023 recipe)<br />
-              <span className="small muted">Four bands, covariance, tangent space, logistic regression, trained on each person's calibration. BBBD, our 8 channels: AUC 0.87 calibrated, 0.64–0.70 for a new person.</span></span>
+              <span className="small muted">Four bands, covariance, tangent space, logistic regression, trained on each person's calibration. The live backend scores a 4 s window every second. BBBD, our 8 channels: AUC 0.87 calibrated, 0.64–0.70 for a new person.</span></span>
           </label>
           <label style={{ display: "flex", gap: 10, alignItems: "flex-start", opacity: 0.6 }}>
             <input type="radio" name="model" disabled style={{ marginTop: 4 }} />

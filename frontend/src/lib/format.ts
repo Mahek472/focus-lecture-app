@@ -21,3 +21,11 @@ export const pct = (x: number, digits = 0) => `${(x * 100).toFixed(digits)}%`;
 export function cssVar(name: string, el: Element = document.documentElement) {
   return getComputedStyle(el).getPropertyValue(name).trim();
 }
+
+/** Short label for why a lapse was flagged: "eeg" or "camera: head_down" -> "EEG", "head down". */
+export function lapseReason(reason?: string): string | null {
+  if (!reason) return null;
+  if (reason === "eeg") return "EEG";
+  const r = reason.replace(/^camera:\s*/, "").replace(/_/g, " ");
+  return r === "face missing" ? "face not in view" : r === "eyes off" ? "eyes off screen" : r === "head turned" ? "looked away" : r;
+}

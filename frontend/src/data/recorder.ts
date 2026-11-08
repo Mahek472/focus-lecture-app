@@ -2,7 +2,7 @@
 // so the review screen and the exports work for any data source.
 
 import type { DataSource, Unsubscribe } from "./DataSource";
-import type { BandPowerUpdate, FocusUpdate, Lapse, Marker, RunHistory, TranscriptLine } from "./types";
+import type { BandPowerUpdate, CameraMessage, FocusUpdate, Lapse, Marker, RunHistory, TranscriptLine } from "./types";
 import { snippetFor } from "./mock/MockSource";
 
 class GrowingSeries {
@@ -23,6 +23,8 @@ interface Recording {
   bands: BandPowerUpdate[];
   lapses: Lapse[];
   openLapse: number | null;
+  openReason?: string;
+  camera: { t: number; state: CameraMessage["state"] }[];
   markers: Marker[];
   eeg: GrowingSeries[];
   eegChannels: string[];
@@ -39,7 +41,7 @@ export class RunRecorder {
 
   attach(source: DataSource, runId: string, transcript: TranscriptLine[]) {
     this.detach();
-    const rec: Recording = this.recs.get(runId) ?? { focus: [], bands: [], lapses: [], openLapse: null, markers: [],
+    const rec: Recording = this.recs.get(runId) ?? { focus: [], bands: [], lapses: [], openLapse: null, camera: [], markers: [],
       eeg: [], eegChannels: [], sfreq: 125, t0: null, transcript };
     rec.transcript = transcript;
     this.recs.set(runId, rec);
@@ -51,10 +53,10 @@ export class RunRecorder {
         this.notify();
       }),
       source.on("bands", (m) => { rec.bands.push({ ...m, t_video: m.t_video ?? this.videoT }); }),
-      source.on("lapse_start", (m) => { rec.openLapse = m.t_video; this.notify(); }),
+      source.on("lapse_start", (m) => { rec.openLapse = m.t_video; rec.openReason = m.reason; this.notify(); }),
       source.on("lapse_end", (m) => {
         if (rec.openLapse !== null) {
-          rec.lapses.push({ start: rec.openLapse, end: m.t_video, snippet: snippetFor(rec.transcript, rec.openLapse, m.t_video) });
+          rec.lapses.push({ start: rec.openLapse, end: m.t_video, snippet: snippetFor(rec.transcript, rec.openLapse, m.t_video), reason: rec.openReason });
           rec.openLapse = null; this.notify();
         }
       }),
@@ -77,13 +79,28 @@ export class RunRecorder {
     return m;
   }
 
+  /** Webcam state each second (the UI computes it; Watch calls this when it sends the camera message). */
+  addCamera(runId: string, t: number, state: CameraMessage["state"]) {
+    const rec = this.recs.get(runId);
+    if (!rec) return;
+    const last = rec.camera.at(-1);
+    if (last && Math.round(last.t) === Math.round(t)) last.state = state; else rec.camera.push({ t, state });
+  }
+
+  /** "I was focused": mark the lapse around t as dismissed (the backend drops it from the recap). */
+  dismissLapse(runId: string, t: number) {
+    const rec = this.recs.get(runId);
+    rec?.lapses.forEach((lp) => { if (lp.start - 2 <= t && t <= lp.end + 15) lp.dismissed = true; });
+    this.notify();
+  }
+
   openLapse(runId: string) { return this.recs.get(runId)?.openLapse ?? null; }
 
   get(runId: string): RunHistory | null {
     const rec = this.recs.get(runId);
     if (!rec) return null;
     return {
-      run_id: runId, focus: rec.focus, bands: rec.bands, lapses: rec.lapses, markers: rec.markers,
+      run_id: runId, focus: rec.focus, bands: rec.bands, camera: rec.camera, lapses: rec.lapses, markers: rec.markers,
       eeg: rec.eeg.length ? { sfreq: rec.sfreq, channels: rec.eegChannels, data: rec.eeg.map((s) => s.view()), t0: rec.t0 ?? 0 } : undefined,
     };
   }

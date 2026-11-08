@@ -31,6 +31,11 @@ export function Calibration() {
 
   useEffect(() => { source.connect(runId); return () => source.disconnect(); }, [source, runId]);
   useServerMessage("calibration", setP);
+  // backend errors (board won't open, a class had no usable windows, ...) end the attempt
+  useServerMessage("status", (m) => {
+    if (m.state === "error" && m.message) { setError(m.message); setStarted(false); setP(null); }
+    else if (m.state === "connecting" && m.message) setError("");
+  });
 
   const start = async () => {
     setError(""); setStarted(true); setP(null);
@@ -119,6 +124,16 @@ export function Calibration() {
                     <div style={{ width: `${(1 - p.seconds_left / p.block_s) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 3 }} />
                   </div>
                   <p className="small muted num">{fmtTime(elapsed)} of {fmtTime(totalS)} elapsed</p>
+                </>
+              )}
+              {done && p?.auc == null && (
+                <>
+                  <h2>Calibration finished</h2>
+                  <p>The model was trained and saved, but the held-out check couldn't produce an AUC (too few clean windows in one of the tasks). Check the signal and repeat if you can.</p>
+                  <div className="toolbar">
+                    <button className="btn btn--primary" onClick={() => nav(`/watch/${runId}`)}>Start the lecture</button>
+                    <button className="btn" onClick={start}>Repeat calibration</button>
+                  </div>
                 </>
               )}
               {done && p?.auc != null && (() => {

@@ -13,7 +13,7 @@ import { HeadMap } from "../components/HeadMap";
 import { ConnectionStatus, FocusStatus, Icon } from "../components/Status";
 import { toPoints, UNCERTAINTY_SOURCE } from "../lib/uncertainty";
 import { forceSimVideo } from "../lib/flags";
-import { fmtTime } from "../lib/format";
+import { fmtTime, lapseReason } from "../lib/format";
 import { CameraPanel } from "../components/CameraPanel";
 import { camera } from "../camera/CameraMonitor";
 import { useCameraReading } from "../camera/useCamera";
@@ -71,12 +71,13 @@ export function Watch() {
     return i < 0 ? [...rest, m] : [...rest.slice(0, i), m, ...rest.slice(i)];
   }));
   useServerMessage("bands", (m) => { setBands(m); const mb = meanBands(m); if (mb) setEngHist((h) => [...h.slice(-299), engagement(mb)]); });
-  const openRef = useRef<number | null>(null);
-  useServerMessage("lapse_start", (m) => { openRef.current = m.t_video; setOpenLapse(m.t_video); });
+  const openRef = useRef<{ start: number; reason?: string } | null>(null);
+  const [openReason, setOpenReason] = useState<string | undefined>();
+  useServerMessage("lapse_start", (m) => { openRef.current = { start: m.t_video, reason: m.reason }; setOpenLapse(m.t_video); setOpenReason(m.reason); });
   useServerMessage("lapse_end", (m) => {
-    const start = openRef.current;
-    if (start != null) setLapses((l) => [...l, { start, end: m.t_video, snippet: "" }]);
-    openRef.current = null; setOpenLapse(null);
+    const o = openRef.current;
+    if (o) setLapses((l) => [...l, { start: o.start, end: m.t_video, snippet: "", reason: o.reason }]);
+    openRef.current = null; setOpenLapse(null); setOpenReason(undefined);
   });
   useServerMessage("status", setStatus);
   useServerMessage("intervention", (m) => {
@@ -104,22 +105,27 @@ export function Watch() {
     const id = window.setInterval(() => {
       const r = camera.last;
       if (!r.running) return;
+      recorder.addCamera(runId, tRef.current, r.state);
       source.send({ type: "camera", t_video: +tRef.current.toFixed(2), state: r.state, face: r.face, head_turned: r.headTurned,
         head_down: r.headDown, eyes_off: r.eyesOff, blink_rate: r.blinkRate == null ? null : Math.round(r.blinkRate) });
     }, 1000);
     return () => clearInterval(id);
-  }, [cam.running, source]);
+  }, [cam.running, source, recorder, runId]);
 
   const respond = useCallback((choice: InterventionResponse["choice"]) => {
     setIntervention((ev) => {
       if (!ev) return null;
       source.send({ type: "intervention_response", choice, t_video: ev.t_video });
-      if (choice === "focused") source.send({ type: "feedback", kind: "false_alarm", t_video: ev.t_video });
+      if (choice === "focused") {
+        source.send({ type: "feedback", kind: "false_alarm", t_video: ev.t_video });
+        recorder.dismissLapse(runId, ev.t_video);
+        setLapses((l) => l.map((lp) => (lp.start - 2 <= ev.t_video && ev.t_video <= lp.end + 15 ? { ...lp, dismissed: true } : lp)));
+      }
       if (choice === "rewind") video.current?.seek(ev.rewind_to);
       video.current?.play();
       return null;
     });
-  }, [source]);
+  }, [source, recorder, runId]);
 
   const addMarker = (label: string) => {
     const m = recorder.addMarker(runId, label, t);
@@ -210,7 +216,20 @@ export function Watch() {
             </div>
             {unreliable && latest && <p className="small" style={{ color: "var(--signal)" }}>Unreliable right now: signal quality is too low to estimate focus.</p>}
             <p className="small muted" style={{ marginTop: 4 }}>Range shows uncertainty ({UNCERTAINTY_SOURCE(focus)}). Calibrated to {info.session.participant_id} only.</p>
-            {openLapse != null && <p className="small" style={{ marginTop: 6 }}><span className="status status--warn"><Icon name="warn" />Possible lapse since {fmtTime(openLapse)}</span></p>}
+            {openLapse != null && <p className="small" style={{ marginTop: 6 }}><span className="status status--warn"><Icon name="warn" />Possible lapse since {fmtTime(openLapse)}{lapseReason(openReason) ? ` (${lapseReason(openReason)})` : ""}</span></p>}
+            {status?.state === "error" && status.message && (
+              <p className="small" role="alert" style={{ marginTop: 6 }}><span className="status status--bad"><Icon name="warn" />{status.message}</span></p>
+            )}
+            {status?.baseline?.active && (
+              <div className="small" style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span className={status.baseline.ready ? "muted" : "status status--warn"}>
+                  {status.baseline.ready ? "Adapted to this session" : `Adapting to this session… about ${Math.ceil(status.baseline.seconds_left)} s left`}
+                </span>
+                <button className="btn btn--quiet btn--small" onClick={() => source.send({ type: "reset_baseline" })}
+                  title="Use after re-seating the headset: the backend relearns this session's baseline">Reset baseline</button>
+              </div>
+            )}
+            {status?.model && <p className="small muted" style={{ marginTop: 4 }}>Model: {status.model}</p>}
             {isReplay && (
               <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--rule)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div><div className="small muted">True label now</div><div style={{ fontWeight: 500 }}>{latest?.truth === "distracted" ? "Distracted (counting)" : latest?.truth ? "Attentive" : "–"}</div></div>

@@ -12,9 +12,10 @@ export function exportCsv(hist: RunHistory, name: string, range?: [number, numbe
   const pts = toPoints(hist.focus).filter((p) => !range || (p.t >= range[0] && p.t <= range[1]));
   const bandsAt = new Map(hist.bands.map((b) => [Math.round(b.t_video ?? -1), b.bands]));
   const header = ["t_video_s", "focus_estimate", "uncertainty_low", "uncertainty_high", "state", "unreliable",
-    "in_lapse", "truth", "marker", "delta_mean", "theta_mean", "alpha_mean", "beta_mean"];
+    "in_lapse", "lapse_reason", "camera_state", "truth", "marker", "delta_mean", "theta_mean", "alpha_mean", "beta_mean"];
   const rows = pts.map((p) => {
-    const inLapse = hist.lapses.some((l) => p.t >= l.start && p.t <= l.end);
+    const lapse = hist.lapses.find((l) => p.t >= l.start && p.t <= l.end), inLapse = !!lapse;
+    const cam = hist.camera?.find((c) => Math.round(c.t) === Math.round(p.t))?.state ?? "";
     const marker = hist.markers.filter((m) => Math.round(m.t_video) === Math.round(p.t)).map((m) => m.label).join("; ");
     const b = bandsAt.get(Math.round(p.t));
     const mean = (k: "delta" | "theta" | "alpha" | "beta") => {
@@ -22,7 +23,7 @@ export function exportCsv(hist: RunHistory, name: string, range?: [number, numbe
       const v = Object.values(b).map((x) => x[k]);
       return (v.reduce((a, c) => a + c, 0) / v.length).toFixed(3);
     };
-    return [p.t, p.score.toFixed(3), p.lo.toFixed(3), p.hi.toFixed(3), p.state, p.unreliable, inLapse, p.truth ?? "",
+    return [p.t, p.score.toFixed(3), p.lo.toFixed(3), p.hi.toFixed(3), p.state, p.unreliable, inLapse, lapse?.reason ?? "", cam, p.truth ?? "",
       `"${marker.replace(/"/g, "'")}"`, mean("delta"), mean("theta"), mean("alpha"), mean("beta")].join(",");
   });
   download(name, new Blob([[header.join(","), ...rows].join("\n")], { type: "text/csv" }));

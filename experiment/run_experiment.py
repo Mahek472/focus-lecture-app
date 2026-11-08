@@ -38,6 +38,7 @@ then open http://localhost:8765 in Chrome, press F11 for full screen.
 """
 import argparse
 import json
+from urllib.parse import parse_qs
 import os
 import random
 import re
@@ -223,11 +224,17 @@ def make_handler(session, recorder, state, args):
         def do_POST(self):
             raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
             if self.path.startswith("/api/upload/"):  # webcam clip (.webm) or its frame times (.json)
-                fname = os.path.basename(self.path.split("/api/upload/")[1])
+                rest = self.path.split("/api/upload/")[1]
+                fname, _, query = rest.partition("?")
+                fname = os.path.basename(fname)
+                seq = parse_qs(query).get("seq", [None])[0]   # .webm arrives in 2 s chunks: seq 0 starts the file
                 cam_dir = f"{REC_DIR}/{args.tag}_cam"
                 os.makedirs(cam_dir, exist_ok=True)
-                open(os.path.join(cam_dir, fname), "wb").write(raw)
-                print(f"saved {cam_dir}/{fname} ({len(raw) / 1e6:.1f} MB)", flush=True)
+                path = os.path.join(cam_dir, fname)
+                with open(path, "ab" if seq not in (None, "0") else "wb") as f:
+                    f.write(raw)
+                if seq is None or seq == "0":
+                    print(f"saving {cam_dir}/{fname}" + (" (streaming)" if seq else f" ({len(raw) / 1e6:.1f} MB)"), flush=True)
                 return self._json({"ok": True})
             body = json.loads(raw or b"{}")
             if self.path == "/api/marker":

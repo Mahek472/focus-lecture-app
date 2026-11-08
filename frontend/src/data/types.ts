@@ -60,6 +60,8 @@ export interface Lapse {
   start: number;            // video seconds
   end: number;
   snippet: string;          // what was said (transcript snippet)
+  reason?: string;          // not in contract: "eeg" or "camera: <state>" (why it was flagged)
+  dismissed?: boolean;      // not in contract: the student pressed "I was focused"
 }
 
 export interface Flashcard {
@@ -100,7 +102,7 @@ export interface BandPowerUpdate {
   bands: Record<ChannelName, Record<BandName, number>>; // power, uV^2
 }
 
-export interface LapseStart { type: "lapse_start"; t_video: number }
+export interface LapseStart { type: "lapse_start"; t_video: number; reason?: string } // reason: not in contract
 export interface LapseEnd { type: "lapse_end"; t_video: number }
 export type LapseEvent = LapseStart | LapseEnd;
 
@@ -134,6 +136,8 @@ export interface StatusUpdate {
   mode?: RunMode;
   sfreq?: number;
   camera?: { face_in_view: boolean; override: boolean; reason?: string }; // not in contract
+  baseline?: { active: boolean; ready: boolean; seconds_left: number };   // not in contract: rolling re-centering
+  model?: string;                                                           // not in contract: which model is scoring
 }
 
 /** Raw EEG samples. Not in contract: the real backend may never send this. */
@@ -185,7 +189,10 @@ export interface CameraMessage {
   blink_rate: number | null;   // per minute; information only, never a lapse trigger
 }
 
-export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage | CameraMessage;
+/** Restart the backend's session baseline (re-centering), e.g. after re-seating the headset. Not in contract. */
+export interface ResetBaseline { type: "reset_baseline" }
+
+export type ClientMessage = VideoState | InterventionResponse | Feedback | SettingsMessage | CameraMessage | ResetBaseline;
 
 // ---------------------------------------------------------------- local (operator) data
 
@@ -228,6 +235,7 @@ export interface RunHistory {
   run_id: string;
   focus: FocusUpdate[];
   bands: BandPowerUpdate[];
+  camera?: { t: number; state: CameraMessage["state"] }[];   // webcam state, one per second
   lapses: Lapse[];
   markers: Marker[];
   eeg?: { sfreq: number; channels: ChannelName[]; data: Float32Array[]; t0: number }; // t0 = video time of sample 0

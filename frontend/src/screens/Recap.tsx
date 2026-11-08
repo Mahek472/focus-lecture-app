@@ -12,7 +12,7 @@ import { Icon } from "../components/Status";
 import { toPoints } from "../lib/uncertainty";
 import { exportCsv, exportPng } from "../lib/exporters";
 import { forceSimVideo } from "../lib/flags";
-import { fmtTime, pct } from "../lib/format";
+import { fmtTime, lapseReason, pct } from "../lib/format";
 
 const LANGUAGES = [["en", "English"], ["es", "Español"], ["fr", "Français"], ["hi", "हिन्दी"], ["zh", "中文"]] as const;
 
@@ -107,6 +107,7 @@ function StudentRecap({ runId, info, hist }: { runId: string; info: RunInfo; his
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
                       <button className="btn btn--quiet" style={{ flex: 1, minWidth: 0, justifyContent: "flex-start", padding: 0 }} onClick={() => setSel(i)} aria-pressed={i === sel}>
                         <span className="num" style={{ fontWeight: 500 }}>{fmtTime(it.lapse.start)}–{fmtTime(it.lapse.end)}</span>
+                        {lapseReason(it.lapse.reason) && <span className="small muted" style={{ whiteSpace: "nowrap" }}>({lapseReason(it.lapse.reason)})</span>}
                         <span className="small muted" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.summary[0]}</span>
                       </button>
                       <button className="btn btn--small" onClick={() => { setSel(i); video.current?.seek(it.lapse.start); video.current?.play(); }}>Replay this part</button>
@@ -217,6 +218,16 @@ function OperatorReview({ info, hist }: { info: RunInfo; hist: RunHistory | null
     }
     return out;
   }, [info.transcript]);
+  // webcam: stretches where the camera saw the person away (anything but "watching")
+  const cameraSegments = useMemo(() => {
+    const out: { start: number; end: number; text: string }[] = [];
+    for (const c of hist?.camera ?? []) {
+      const last = out.at(-1), text = lapseReason(`camera: ${c.state}`) ?? c.state;
+      if (c.state === "watching") continue;
+      if (last && last.text === text && c.t - last.end <= 1.5) last.end = c.t + 1; else out.push({ start: c.t, end: c.t + 1, text });
+    }
+    return out;
+  }, [hist]);
 
   if (!hist || !hist.focus.length) {
     return (
@@ -262,7 +273,9 @@ function OperatorReview({ info, hist }: { info: RunInfo; hist: RunHistory | null
         <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", fontSize: 13, borderTop: "1px solid var(--rule)" }}>
           {[
             { label: "Markers", items: hist.markers.filter((m) => inRange(m.t_video, m.t_video)).map((m) => ({ a: m.t_video, b: m.t_video, text: m.label, kind: "marker" })) },
-            { label: "Lapses", items: hist.lapses.filter((l) => inRange(l.start, l.end)).map((l) => ({ a: l.start, b: l.end, text: `${fmtTime(l.start)}–${fmtTime(l.end)}`, kind: "lapse" })) },
+            { label: "Lapses", items: hist.lapses.filter((l) => inRange(l.start, l.end)).map((l) => ({ a: l.start, b: l.end,
+                text: `${fmtTime(l.start)}–${fmtTime(l.end)}${lapseReason(l.reason) ? `, ${lapseReason(l.reason)}` : ""}${l.dismissed ? ", dismissed" : ""}`, kind: "lapse" })) },
+            ...(cameraSegments.length ? [{ label: "Camera", items: cameraSegments.filter((s) => inRange(s.start, s.end)).map((s) => ({ a: s.start, b: s.end, text: s.text, kind: "lapse" })) }] : []),
             { label: "Lecture", items: segments.filter((s) => inRange(s.start, s.end)).map((s) => ({ a: s.start, b: s.end, text: s.text, kind: "segment" })) },
           ].map((row) => (
             <div key={row.label} style={{ display: "contents" }}>

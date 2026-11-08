@@ -58,14 +58,19 @@ The live traces and the focus timeline draw on canvas: 8 channels at 125 Hz, min
 The contract doc fixes the `focus` message exactly. These details are not in it; the UI assumes the following, and each lives in one place (`WebSocketSource.ts` or `types.ts`):
 
 1. **Lecture list:** `GET /sessions` returns lectures (`[{id, title, video, length_s}]`). Past runs are kept in the browser.
-2. **Video and transcript:** `GET /video?lecture_id=` serves the video when `video` is empty; `GET /transcript?lecture_id=` returns `[{start, end, text}]`.
+2. **Video and transcript:** a lecture with a `youtube` id plays the embed; otherwise `GET /video?lecture_id=` serves the video when `video` is empty; `GET /transcript?lecture_id=` returns `[{start, end, text}]`.
 3. **Start calls:** `POST /session/start` takes `{lecture_id, participant_id, mode, intervention, sensitivity}` and returns `{run_id}`. `POST /calibration/start` takes `{run_id}`.
 4. **Recap:** `GET /run/{id}/recap?lang=` returns `{focused_fraction, items: [{lapse, summary[], flashcards[{front, back}]}]}`.
 5. **WebSocket message shapes the contract names but doesn't spell out:** `bands` (`{bands: {ch: {delta, theta, alpha, beta}}}`), `intervention` (`{action, t_video, rewind_to}`), `calibration` (`{block, n_blocks, phase, task, seconds_left, block_s, start_number?, done?, auc?}`), `status`, plus `settings` sent by the UI.
-6. **Not in the contract, optional:**
+6. **Not in the contract, optional (the live backend in `backend/` sends all of these):**
    - `confidence` on `focus`; without it the UI derives the uncertainty band and says so on screen.
-   - raw `eeg` chunks; without them the live trace panels stay empty during a lecture.
+   - raw `eeg` chunks (`{type: "eeg", sfreq, channels, samples}` every 100 ms); without them the live trace panels stay empty during a lecture.
    - `camera` on `status`.
+   - `reason` on `lapse_start`: `"eeg"` or `"camera: <state>"`. Shown on the timeline, the recap list, the operator review and the CSV (`lapse_reason`).
+   - `baseline` on `status` (`{active, ready, seconds_left}`): rolling re-centering when an older saved model is reused. Watch shows "Adapting to this session…" and a Reset baseline button, which sends `{type: "reset_baseline"}`.
+   - `model` on `status`: which model is scoring. Watch shows it under the focus estimate.
+   - Lapses from `GET /run/{id}/lapses` may carry `reason` and `dismissed` ("I was focused"); dismissed lapses are left out of the recap.
+   - `status` with `state: "error"` and a `message` (no calibrated model, the board won't open, calibration failed): shown on Watch and Calibration. A finished calibration may report `auc: null` when there were too few clean windows.
 7. **Camera message (UI → backend, once a second while the webcam runs):**
    `{type: "camera", t_video, state, face, head_turned, head_down, eyes_off, blink_rate}`, where `state` is one of `watching`, `face_missing`, `head_turned`, `head_down`, `eyes_off`. The backend applies the 3 s camera override when `state` isn't `watching`. `blink_rate` is information only and never triggers a lapse. All camera analysis happens in the browser (MediaPipe Face Landmarker); no video is sent.
 8. **Voltage scale:** BrainFlow 5.23.0 reports Knight EEG 79.57 times too large. `scripts/live_signal.py` already corrects it; any new backend code must too (see `knight_scale()` in `scripts/headset_session.py`).

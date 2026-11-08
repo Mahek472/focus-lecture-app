@@ -43,9 +43,12 @@
   .ok { color: #5fd38d; } .bad { color: #ff6b6b; }
   #cam { position: fixed; right: 16px; bottom: 16px; width: 240px; border-radius: 8px; z-index: 5; }
   #cam.recording { width: 2px; height: 2px; opacity: 0.01; }   /* participant doesn't watch themselves */
+  #stop-save { position: fixed; left: 8px; top: 8px; z-index: 6; opacity: 0.25; font-size: 12px; padding: 4px 8px; }
+  #stop-save:hover, #stop-save:focus { opacity: 1; }
 </style>
 </head>
 <body>
+<button class="ghost" id="stop-save" title="Experimenter: stop now and save everything recorded so far (Ctrl+Shift+S)">Stop and save</button>
 
 <div id="setup" class="screen on"><div class="card">
   <h1>Experimenter setup</h1>
@@ -125,22 +128,47 @@ async function initCamera() {
 
 // One webcam clip per video, black screen to black screen. The recorder's start time on the
 // page clock anchors the clip's own frame timestamps to the EEG markers (see `sync`).
+// Uploaded in 2 s chunks while recording (appended on the server, in order), so a run that is
+// stopped early, or a page that closes, keeps everything up to the last chunk.
+let currentClip = null, stopping = false;
 async function startClip(name) {
   if (!camStream) return null;
   const type = MediaRecorder.isTypeSupported("video/webm;codecs=vp8") ? "video/webm;codecs=vp8" : "video/webm";
-  const clip = {name, chunks: [], rec: new MediaRecorder(camStream, {mimeType: type, videoBitsPerSecond: 1500000})};
-  clip.rec.ondataavailable = e => e.data.size && clip.chunks.push(e.data);
+  const clip = {name, seq: 0, sent: Promise.resolve(), rec: new MediaRecorder(camStream, {mimeType: type, videoBitsPerSecond: 1500000})};
+  clip.rec.ondataavailable = e => {
+    if (!e.data.size) return;
+    const seq = clip.seq++;   // chained: chunks must reach the file in order
+    clip.sent = clip.sent.then(() => fetch(`/api/upload/${clip.name}.webm?seq=${seq}`, {method: "POST", body: e.data})).catch(() => {});
+  };
   await new Promise(r => { clip.rec.onstart = e => { clip.rec_start_ms = e.timeStamp || performance.now(); r(); };
-                           clip.rec.start(); });
+                           clip.rec.start(2000); });
+  currentClip = clip;
   return clip;
 }
 async function stopClip(clip) {
-  if (!clip) return;
-  await new Promise(r => { clip.rec.onstop = r; clip.rec.stop(); });
+  if (!clip || clip.stopped) return;
+  clip.stopped = true;
+  if (currentClip === clip) currentClip = null;
+  await new Promise(r => { clip.rec.onstop = r; clip.rec.stop(); });   // fires the last dataavailable first
   const meta = {clip: clip.name, rec_start_ms: clip.rec_start_ms, rec_stop_ms: performance.now()};
-  uploads.push(fetch(`/api/upload/${clip.name}.webm`, {method: "POST", body: new Blob(clip.chunks, {type: "video/webm"})}),
-               fetch(`/api/upload/${clip.name}.json`, {method: "POST", body: JSON.stringify(meta)}));
+  uploads.push(clip.sent, fetch(`/api/upload/${clip.name}.json`, {method: "POST", body: JSON.stringify(meta)}));
 }
+
+// Experimenter: end the run now, keeping the EEG, markers, answers and webcam so far.
+async function stopAndSave() {
+  if (stopping || !confirm("Stop the study now and save everything recorded so far?")) return;
+  stopping = true;
+  $("stop-save").disabled = true;
+  await event("stopped_early");
+  document.querySelectorAll("video").forEach(v => v.pause());
+  await stopClip(currentClip);
+  await Promise.all(uploads);
+  for (const phase of Object.keys(answers)) await post("/api/answers", {phase, answers: answers[phase]});
+  await post("/api/finish", {});
+  show("msg"); $("msg").querySelector(".card").innerHTML = "<h1>Stopped</h1><p>Everything recorded so far was saved. You can close this window.</p>";
+}
+$("stop-save").onclick = stopAndSave;
+document.addEventListener("keydown", e => { if (e.ctrlKey && e.shiftKey && (e.key === "S" || e.key === "s")) { e.preventDefault(); stopAndSave(); } });
 
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
@@ -309,6 +337,7 @@ async function study() {
     await playVideo(S.distracted_order[i], 2);
     await reached(S.distracted_order[i]);
   }
+  if (stopping) return;
   await Promise.all(uploads);  // webcam clips must reach the server before it shuts down
   await post("/api/finish", {});
   await message("Thank you", "<p>The study is complete. Please let the experimenter know.</p>", "Close");
